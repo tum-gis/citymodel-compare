@@ -5,7 +5,7 @@
 ## What it is
 
 
-A tool to map, match, and interpret changes in CityGML datasets.
+A tool to map and match CityGML datasets, as well as interpret their changes, all by using graphs.
 
 + **MAPPING**: CityGML datasets are represented as **graphs** and stored in the graph database Neo4j. The mapping
   process is very flexible and can support both versions **2.0** and **3.0** of CityGML (as it uses [citygml4j](https://github.com/citygml4j/citygml4j)).
@@ -73,22 +73,24 @@ datasets already prepared and available for use in the Docker container.
 2. In Neo4j Browser, run the following query to count the number of nodes created for the old datasets:
 
    ```cypher
-   MATCH (n:`__PARTITION_INDEX__0`) RETURN count(n)
+   MATCH (n:`__PARTITION_INDEX__0`)
+   RETURN count(n)
    ```
 
    ```Cypher
    Result: 35095
    ```
 
-   Similar, run the following query to count the number of nodes created for the new datasets:
+   Similarly, run the following query to count the number of nodes created for the new datasets:
 
-    ```cypher
-    MATCH (n:`__PARTITION_INDEX__1`) RETURN count(n)
-    ```
+   ```cypher
+   MATCH (n:`__PARTITION_INDEX__1`)
+   RETURN count(n)
+   ```
 
-    ```Cypher
-    Result: 35324
-    ```
+   ```Cypher
+   Result: 35324
+   ```
 
 3. To see how many buildings the old dataset has:
 

@@ -8,7 +8,7 @@
 A tool to map, match, and interpret changes in CityGML datasets.
 
 + **MAPPING**: CityGML datasets are represented as **graphs** and stored in the graph database Neo4j. The mapping
-  process is very flexible and can support both versions **2.0** and **3.0** of CityGML.
+  process is very flexible and can support both versions **2.0** and **3.0** of CityGML (as it uses [citygml4j](https://github.com/citygml4j/citygml4j)).
 
 + **MATCHING**: The graph representations of the mapped CityGML datasets are matched based on both their **semantic**
   and

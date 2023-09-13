@@ -154,7 +154,7 @@ datasets already prepared and available for use in the Docker container.
    Result: 723
    ```
 
-   This means that of the `2540` literal changes, `723`, or `(28%)`, have been interpreted.
+   This means that, of the `2540` literal changes, `723`, or `28%`, have been interpreted.
 
 6. To visualize a building and its changes:
 

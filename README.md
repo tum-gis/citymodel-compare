@@ -4,11 +4,11 @@
 
 ## What it is
 
-
 A tool to map and match CityGML datasets, as well as interpret their changes, all by using graphs.
 
 + **MAPPING**: CityGML datasets are represented as **graphs** and stored in the graph database Neo4j. The mapping
-  process is very flexible and can support both versions **2.0** and **3.0** of CityGML (as it uses [citygml4j](https://github.com/citygml4j/citygml4j)).
+  process is very flexible and can support both versions **2.0** and **3.0** of CityGML (as it
+  uses [citygml4j](https://github.com/citygml4j/citygml4j)).
 
 + **MATCHING**: The graph representations of the mapped CityGML datasets are matched based on both their **semantic**
   and
@@ -212,7 +212,7 @@ As shown in the figure, this roofs of this building have been raised by some amo
    <div style="text-align: center;">
 
    |   | **dh_m (m)** |
-      |---|--------------|
+         |---|--------------|
    | 1 | 0.008        |
    | 2 | 0.05         |
    | 3 | 0.12         |

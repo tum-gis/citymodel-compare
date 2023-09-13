@@ -262,7 +262,7 @@ The following features will be added soon:
 
 ## How to cite it
 
-This tool is part of the following publication:
+This tool is part of the following publications:
 
 **Nguyen, Son H.; Kolbe, Thomas H.**: _Identification and Interpretation of Change Patterns in Semantic 3D City Models_.
 Proceedings of the 18th International 3D GeoInfo Conference 2023, Springer Verlag, 2023. TBA.

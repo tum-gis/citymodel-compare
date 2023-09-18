@@ -7,5 +7,5 @@ docker run -it --rm -p7474:7474 -p7687:7687 citymodel-compare
 # .\gradlew shadowJar
 
 # Tag and push the image to Docker Hub
-docker tag citymodel-compare sonnguyentumy/citymodel-compare:1.0.0
-docker push sonnguyentumy/citymodel-compare:1.0.0
+docker tag citymodel-compare sonnguyentum/citymodel-compare:1.0.0
+docker push sonnguyentum/citymodel-compare:1.0.0

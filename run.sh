@@ -1,5 +1,5 @@
 # For experimenting with the docker image
-docker build -t citymodel-compare .
+docker build --no-cache -t citymodel-compare .
 docker run -it --rm -p7474:7474 -p7687:7687 citymodel-compare
 
 # For production, it is recommended to build the JAR and include it in the ENTRYPOINT of the Dockerfile

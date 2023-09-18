@@ -212,7 +212,7 @@ As shown in the figure, this roofs of this building have been raised by some amo
    <div style="text-align: center;">
 
    |   | **dh_m (m)** |
-         |---|--------------|
+   |---|--------------|
    | 1 | 0.008        |
    | 2 | 0.05         |
    | 3 | 0.12         |

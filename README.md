@@ -41,7 +41,10 @@ What is needed:
 3. Run the image:
 
    ```shell
-    docker run -it --rm -p 7474:7474 -p 7687:7687 sonnguyentum/citymodel-compare:1.0.0
+    docker run \
+        -it --rm \
+        -p 7474:7474 -p 7687:7687 \
+    sonnguyentum/citymodel-compare:1.0.0
     ```
 
    This will start a Neo4j instance with all necessary dependencies installed. The parameters are as follows:
@@ -212,7 +215,7 @@ As shown in the figure, this roofs of this building have been raised by some amo
    <div style="text-align: center;">
 
    |   | **dh_m (m)** |
-   |---|--------------|
+                                                                                                                                                                        |---|--------------|
    | 1 | 0.008        |
    | 2 | 0.05         |
    | 3 | 0.12         |
@@ -252,12 +255,151 @@ As shown in the figure, this roofs of this building have been raised by some amo
 
 10. These rules are defined in Cypher. Please refer to this [Cypher file](scripts/rules_v2.cql) for more details.
 
+## How to use my own datasets
+
+The following steps are required to use your own datasets:
+
+1. Clone this project:
+
+   ```shell
+   git clone https://github.com/tum-gis/citymodel-compare
+   cd citymodel-compare
+   ```
+
+2. Copy your datasets into the `input` directory, such as:
+
+   ```shell
+   # Copy old.gml and new.gml into the input directory
+   cp /path/to/your/datasets/old.gml input/
+   cp /path/to/your/datasets/new.gml input/
+   ```
+
+3. Edit file `citygmlv2.conf` in the `config` directory to include these datasets:
+
+   ```shell
+   # Input dataset to map onto graphs, can have multiple files/directories
+   # If a path is a directory, ALL files in that folder shall be imported as one
+   mapper.dataset.paths = [
+      "input/old.gml",
+      "input/new.gml"
+   ]
+   ```
+
+   **Notes**:
+    + The value `mapper.dataset.paths` can point to either files or directories. If the path is a directory, all files
+      in that folder shall be imported as one.
+    + The first file in the list is considered the **old** dataset, while the second is the **new** dataset.
+    + The file `citygmlv2.conf` is used for CityGML v2.0 datasets. For CityGML v3.0 datasets, edit file
+      `citygmlv3.conf` instead.
+
+4. Run the Docker container with bind mounts:
+
+    ```shell
+    # Make sure you are in the cloned citymodel-compare directory
+    docker run \
+        -it --rm \
+        -p 7474:7474 -p 7687:7687 \
+        -v "config:config" \
+        -v "input:input" \
+        -v "output:output" \
+        -v "scripts:scripts" \
+    sonnguyentum/citymodel-compare:1.0.0
+    ```
+
+   The parameters are as follows:
+    + `-v "config:config"`: Bind mount the `config` directory of the host machine to the `config` directory of
+      the container. This is where the configuration files are stored.
+    + `-v "input:input"`: Bind mount the `input` directory of the host machine to the `input` directory of the
+      container. This is where the datasets are stored.
+    + `-v "output:output"`: Bind mount the `output` directory of the host machine to the `output` directory
+      of the container. This is where the results are stored, including the Neo4j database.
+    + `-v "scripts:scripts"`: Bind mount the `scripts` directory of the host machine to the `scripts` directory
+      of the container. This is where the rule files and other functions are stored.
+
+## How to define my own pattern rules
+
+The following steps are required to define your own pattern rules:
+
+1. Clone this project:
+
+   ```shell
+   git clone https://github.com/tum-gis/citymodel-compare
+   cd citymodel-compare
+   ```
+
+2. Edit file `scripts/rules_v2.cql` in the `scripts` directory to include your own rules. An example of the file can be
+   found [here](scripts/rules_v2.cql). The rules are defined using
+   Neo4j's [Cypher Query Language](https://neo4j.com/developer/cypher/).
+
+   The rules contain nodes and edges. The nodes are labelled with `RULE` and the edges are labelled
+   with `AGGREGATED_TO`. Each node and edge can have properties (see tables below).
+
+3. Run the Docker container with bind mounts:
+
+    ```shell
+    # Make sure you are in the cloned citymodel-compare directory
+    docker run \
+        -it --rm \
+        -p 7474:7474 -p 7687:7687 \
+        -v "config:config" \
+        -v "input:input" \
+        -v "output:output" \
+        -v "scripts:scripts" \
+    sonnguyentum/citymodel-compare:1.0.0
+    ```
+
+   The parameters are as follows:
+    + `-v "config:config"`: Bind mount the `config` directory of the host machine to the `config` directory of
+      the container. This is where the configuration files are stored.
+    + `-v "input:input"`: Bind mount the `input` directory of the host machine to the `input` directory of the
+      container. This is where the datasets are stored.
+    + `-v "output:output"`: Bind mount the `output` directory of the host machine to the `output` directory
+      of the container. This is where the results are stored, including the Neo4j database.
+    + `-v "scripts:scripts"`: Bind mount the `scripts` directory of the host machine to the `scripts` directory
+      of the container. This is where the rule files and other functions are stored.
+
+### Node properties
+
+| **Property**  | **Description**                                                                                                                                                                                                                                                                                                                                                                                      | **Mandatory** |
+|---------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `change_type` | The type of current change                                                                                                                                                                                                                                                                                                                                                                           | Yes           |
+| `calc_scope`  | Directive to calculate scope over this type of changes. For example, `calc_scope="p1;p2;p3"` will calculate scope based on all changes with the same `change_type` and have the same values of `p1`, `p2`, `p3`. The current implementation allows for fuzzy comparison of numeric and date-time values. For instance, `1.0001` and  `1.000` may be considered equal for error tolerance of `0.001`. | No            |
+| `tags`        | Tags for the current change. For example, `tags="update;thematic;toplevel"` will add indications to categorize this change as an update of thematic properties that belong to a top-level feature.                                                                                                                                                                                                   | No            |
+
+### Edge properties
+
+| **Property**        | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **Mandatory** |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `next_content_type` | The type of the target content node. This is used by the interpreter while navigating within the content network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Yes           |
+| `search_length`     | Specify the maximum length the interpreter should traverse to reach target nodes of `next_content_type`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | No            |
+| `not_contains`      | Specify the content type that should not be included while travering to the target content node. If a content node of this `not_contains` is encountered, the interpreter shall exit. For example, `not_contains` can be used to distinguish changes that belong to a building part or a building.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | No            |
+| `name`              | Give a name to the current change. This is needed for joining multiple converging rule edges that are required to create the next interpreted change. The `join` conditions require ALL converging rule edges to have a unique `name`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | No            |
+| `join`              | Conditions for joining converging rule edges. Conditions are given in JavaScript syntax. For example, the join conditions `fuzzyEquals(parseFloat(rule_measured_height.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))` takes the properties `LEFT_PROPERTY_VALUE` and `RIGHT_PROPERTY_VALUE` of change named `rule_measured_height`, as well as property `z` of `rule_translated_roofs` and `rule_size_changed_walls` and `rule_translated_grounds`. The function `fuzzyEquals(a, b)` is pre-defined and can be freely used to test whether two strings `a` and `b` are numerically equal, with error tolerance taking into account. The function `parseFloat(a)` is available in JavaScript to convert a string to a number. | No            |
+| `scope`             | Test whether the current change belong to a scoped change. There are two values: `clustered`, and `global`. If `scope` is used, `weight` can be omitted. Note: scopes are only calculated for changes that belong to top-level features.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | No            |
+| `conditions`        | Conditions for the creation of the next (interpreted) change. The conditions are given in JavaScript syntax and must be evaluated to `true` or `false`. Properties of the current change node can also be used. For instance, `PROPERTY_NAME === "measuredHeight" && fuzzyEquals(RIGHT_PROPERTY_VALUE - LEFT_PROPERTY_VALUE, 1.0)` can be used to determine whether the current change is an updated `measuredHeight`, and whether the new value is greater than the old value by `1.0`. The function `fuzzyEquals(a, b)` is pre-defined and can be freely used to test whether two strings `a` and `b` are numerically equal, with error tolerance taking into account.                                                                                                                                                                                                                                       | No            |
+| `propagate`         | Directive to propagate the properties of the current change to the next (interpreted) change. For instance, `propagate="p1;p2;p3"` will propagate the properties `p1`, `p2`, and `p3`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | No            |
+| `weight`            | Determine the number of occurrences of the current changes required for the creation of the next interpreted change. For example, `weight=5`. If the weight value is not known beforehand, the placeholder `*` can be used, such as `weight=*`. This placeholder shall be updated with a concrete value the interpreter during runtime.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | No            |
+
+### Pre-defined functions
+
+Since `conditions` and `join` can be given in JavaScript syntax, pre-defined functions, JavaScript functions, and other
+JavaScript syntax can be used. The following pre-defined functions are available:
+
+| **Function**          | **Description**                                                                                              |
+|-----------------------|--------------------------------------------------------------------------------------------------------------|
+| `fuzzyEquals(a, b)`   | Test whether two strings `a` and `b` are numerically equal, with error tolerance taking into account.        |
+| `spatialEquals(a, b)` | Test whether two geometries `a` and `b` are spatially equivalent, with error tolerances taking into account. |
+
+Other JavaScript functions can be used as well. For example, `Math.abs(a)` can be used to get the absolute value of `a`,
+or `parseFloat(a)` can be used to convert a string `a` to a number.
+
+The pre-defined functions are defined in JavaScript in the file [functions.js](scripts/functions.js). This file is read
+by the interpreter during runtime, thus you can define your own functions here and use them in `conditions` or `join`.
+
 ## What's next
 
 The following features will be added soon:
 
-+ The ability to add **your own datasets** and run the tool on them.
-+ A detailed syntactic **description** of how rule nodes can be defined.
 + The ability to **run** the mapping, matching, and interpretation processes separately.
 
 <img src="resources/line.jpg" alt="Buildings with raised roofs" style="width:100%;">

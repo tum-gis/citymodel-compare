@@ -21,6 +21,17 @@ A tool to map and match CityGML datasets, as well as interpret their changes, al
 The ultimate goal of this tool is to provide a **precise**, **expressive**, and **human-centered** interpretation of
 changes in CityGML.
 
+## Contents
+
++ [How to run it](#how-to-run-it)
++ [How to test it](#how-to-test-it)
++ [How to use my own datasets](#how-to-use-my-own-datasets)
++ [How to define my own pattern rules](#how-to-define-my-own-pattern-rules)
++ [What's next](#whats-next)
++ [How to cite it](#how-to-cite-it)
++ [License](LICENSE)
++ [Contact](#contact)
+
 ## How to run it
 
 This tool can be used in two ways: either via Gradle or via Docker. For testing purposes, Docker is recommended.
@@ -251,6 +262,8 @@ As shown in the figure, this roofs of this building have been raised by some amo
 
 10. These rules are defined in Cypher. Please refer to this [Cypher file](scripts/rules_v2.cql) for more details.
 
+<img src="resources/line.jpg" alt="Buildings with raised roofs" style="width:100%;">
+
 ## How to use my own datasets
 
 The following steps are required to use your own datasets:
@@ -438,3 +451,28 @@ GeoInfo Conference 2017 (ISPRS Annals of the Photogrammetry, Remote Sensing and 
 
 **Nguyen, Son H.**: [_Spatio-semantic Comparison of 3D City Models in CityGML using a Graph
 Database_](https://mediatum.ub.tum.de/doc/1374646/1374646.pdf). Master thesis, 2017.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+If you have any questions or suggestions, please contact:
+
+**Son H. Nguyen, M.Sc.**
+
+**_PhD Candidate, Research Associate_**
+
+Chair of Geoinformatics | Department of Aerospace and Geodesy
+
+TUM School of Engineering and Design | Technical University of Munich (TUM)
+
+Arcisstr. 21, 80333 Munich, Germany
+
+Email: [son.nguyen@tum.de](mailto:son.nguyen@tum.de)
+
+[Homepage](https://www.asg.ed.tum.de/en/gis/our-team/staff/son-h-nguyen/) | [LinkedIn](https://www.linkedin.com/in/son-h-nguyen/) | [ResearchGate](https://www.researchgate.net/profile/Son-Nguyen-101)
+
+
+

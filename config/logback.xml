@@ -1,0 +1,32 @@
+<configuration>
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>output/logs/run.log</file>
+        <append>false</append>
+        <!-- set immediateFlush to false for much higher logging throughput -->
+        <immediateFlush>true</immediateFlush>
+        <encoder>
+            <pattern>%d{HH:mm:ss} [%-17thread] %-5level %-25.25logger{25} : %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss} [%-17thread] %-5level %-25.25logger{25} : %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="io.netty" level="OFF"/>
+    <logger name="org.eclipse.core.commands.AbstractHandler" level="OFF"/>
+    <logger name="org.eclipse.jetty" level="OFF"/>
+    <logger name="org.javers" level="OFF"/>
+    <logger name="reactor.core.publisher.Hooks" level="OFF"/>
+    <logger name="reactor.util.Loggers" level="OFF"/>
+    <logger name="uk.co.jemos.podam" level="OFF"/>
+
+    <root level="debug">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

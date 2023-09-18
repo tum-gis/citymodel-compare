@@ -52,11 +52,19 @@ What is needed:
 3. Run the image:
 
    ```shell
-    docker run \
-        -it --rm \
-        -p 7474:7474 -p 7687:7687 \
+   # Linux 
+   docker run \
+      -it --rm \
+      -p 7474:7474 -p 7687:7687 \
+   sonnguyentum/citymodel-compare:1.0.0
+   ```
+   ```shell
+   # Windows
+    docker run ^
+       -it --rm ^
+       -p 7474:7474 -p 7687:7687 ^
     sonnguyentum/citymodel-compare:1.0.0
-    ```
+   ```
 
    This will start a Neo4j instance with all necessary dependencies installed. The parameters are as follows:
     + `-it`: Interactive mode.
@@ -80,7 +88,7 @@ datasets already prepared and available for use in the Docker container.
    neo4j://localhost:7687
    ```
 
-   If requested, the default username and password are both `neo4j`. The following window should appear:
+If requested, the default username and password are both `neo4j`. The following window should appear:
 
 ![Neo4j Browser](resources/neo4j_browser.jpg)
 
@@ -301,29 +309,53 @@ The following steps are required to use your own datasets:
     + The file `citygmlv2.conf` is used for CityGML v2.0 datasets. For CityGML v3.0 datasets, edit file
       `citygmlv3.conf` instead.
 
-4. Run the Docker container with bind mounts:
+4. Make sure Docker is up and running.
+
+5. Pull the following image from Docker Hub:
+
+   ```shell
+   docker pull sonnguyentum/citymodel-compare:1.0.0
+   ```
+
+6. Run the Docker container with bind mounts (make sure you are in the cloned `citymodel-compare` directory):
 
     ```shell
-    # Make sure you are in the cloned citymodel-compare directory
+    # Linux
     docker run \
         -it --rm \
         -p 7474:7474 -p 7687:7687 \
-        -v "config:config" \
-        -v "input:input" \
-        -v "output:output" \
-        -v "scripts:scripts" \
+        -v "/path/to/config:/home/gradle/src/citymodel-compare/config" \
+        -v "/path/to/input:/home/gradle/src/citymodel-compare/input" \
+        -v "/path/to/output:/home/gradle/src/citymodel-compare/output" \
+        -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" \
+    sonnguyentum/citymodel-compare:1.0.0
+    ```
+
+    ```shell
+    # Windows
+    docker run ^
+        -it --rm ^
+        -p 7474:7474 -p 7687:7687 ^
+        -v "/path/to/config:/home/gradle/src/citymodel-compare/config" ^
+        -v "/path/to/input:/home/gradle/src/citymodel-compare/input" ^
+        -v "/path/to/output:/home/gradle/src/citymodel-compare/output" ^
+        -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" ^
     sonnguyentum/citymodel-compare:1.0.0
     ```
 
    The parameters are as follows:
-    + `-v "config:config"`: Bind mount the `config` directory of the host machine to the `config` directory of
-      the container. This is where the configuration files are stored.
-    + `-v "input:input"`: Bind mount the `input` directory of the host machine to the `input` directory of the
-      container. This is where the datasets are stored.
-    + `-v "output:output"`: Bind mount the `output` directory of the host machine to the `output` directory
-      of the container. This is where the results are stored, including the Neo4j database.
-    + `-v "scripts:scripts"`: Bind mount the `scripts` directory of the host machine to the `scripts` directory
-      of the container. This is where the rule files and other functions are stored.
+    + `-v "/path/to/config:/home/gradle/src/citymodel-compare/config"`: Bind mount the `config` directory of the host
+      machine to the `config` directory of the container. This is where the configuration files are stored. Please
+      replace `/path/to/config` with the absolute path to the `config` directory of the host machine.
+    + `-v "/path/to/input:/home/gradle/src/citymodel-compare/input"`: Bind mount the `input` directory of the host
+      machine to the `input` directory of the container. This is where the datasets are stored. Please replace
+      `/path/to/input` with the absolute path to the `input` directory of the host machine.
+    + `-v "/path/to/output:/home/gradle/src/citymodel-compare/output"`: Bind mount the `output` directory of the host
+      machine to the `output` directory of the container. This is where the results are stored, including the Neo4j
+      database. Please replace `/path/to/output` with the absolute path to the `output` directory of the host machine.
+    + `-v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts"`: Bind mount the `scripts` directory of the host
+      machine to the `scripts` directory of the container. This is where the rule files and other functions are stored.
+      Please replace `/path/to/scripts` with the absolute path to the `scripts` directory of the host machine.
 
 ## How to define my own pattern rules
 
@@ -343,29 +375,53 @@ The following steps are required to define your own pattern rules:
    The rules contain nodes and edges. The nodes are labelled with `RULE` and the edges are labelled
    with `AGGREGATED_TO`. Each node and edge can have properties (see tables below).
 
-3. Run the Docker container with bind mounts:
+3. Make sure Docker is up and running.
+
+4. Pull the following image from Docker Hub:
+
+   ```shell
+   docker pull sonnguyentum/citymodel-compare:1.0.0
+   ```
+
+5. Run the Docker container with bind mounts (make sure you are in the cloned `citymodel-compare` directory):
 
     ```shell
-    # Make sure you are in the cloned citymodel-compare directory
+    # Linux
     docker run \
         -it --rm \
         -p 7474:7474 -p 7687:7687 \
-        -v "config:config" \
-        -v "input:input" \
-        -v "output:output" \
-        -v "scripts:scripts" \
+        -v "/path/to/config:/home/gradle/src/citymodel-compare/config" \
+        -v "/path/to/input:/home/gradle/src/citymodel-compare/input" \
+        -v "/path/to/output:/home/gradle/src/citymodel-compare/output" \
+        -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" \
+    sonnguyentum/citymodel-compare:1.0.0
+    ```
+
+    ```shell
+    # Windows
+    docker run ^
+        -it --rm ^
+        -p 7474:7474 -p 7687:7687 ^
+        -v "/path/to/config:/home/gradle/src/citymodel-compare/config" ^
+        -v "/path/to/input:/home/gradle/src/citymodel-compare/input" ^
+        -v "/path/to/output:/home/gradle/src/citymodel-compare/output" ^
+        -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" ^
     sonnguyentum/citymodel-compare:1.0.0
     ```
 
    The parameters are as follows:
-    + `-v "config:config"`: Bind mount the `config` directory of the host machine to the `config` directory of
-      the container. This is where the configuration files are stored.
-    + `-v "input:input"`: Bind mount the `input` directory of the host machine to the `input` directory of the
-      container. This is where the datasets are stored.
-    + `-v "output:output"`: Bind mount the `output` directory of the host machine to the `output` directory
-      of the container. This is where the results are stored, including the Neo4j database.
-    + `-v "scripts:scripts"`: Bind mount the `scripts` directory of the host machine to the `scripts` directory
-      of the container. This is where the rule files and other functions are stored.
+    + `-v "/path/to/config:/home/gradle/src/citymodel-compare/config"`: Bind mount the `config` directory of the host
+      machine to the `config` directory of the container. This is where the configuration files are stored. Please
+      replace `/path/to/config` with the absolute path to the `config` directory of the host machine.
+    + `-v "/path/to/input:/home/gradle/src/citymodel-compare/input"`: Bind mount the `input` directory of the host
+      machine to the `input` directory of the container. This is where the datasets are stored. Please replace
+      `/path/to/input` with the absolute path to the `input` directory of the host machine.
+    + `-v "/path/to/output:/home/gradle/src/citymodel-compare/output"`: Bind mount the `output` directory of the host
+      machine to the `output` directory of the container. This is where the results are stored, including the Neo4j
+      database. Please replace `/path/to/output` with the absolute path to the `output` directory of the host machine.
+    + `-v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts"`: Bind mount the `scripts` directory of the host
+      machine to the `scripts` directory of the container. This is where the rule files and other functions are stored.
+      Please replace `/path/to/scripts` with the absolute path to the `scripts` directory of the host machine.
 
 ### Node properties
 

@@ -212,18 +212,14 @@ As shown in the figure, this roofs of this building have been raised by some amo
 
    The sorted results are as follows:
 
-   <div style="text-align: center;">
-
-   |   | **dh_m (m)** |
-                                                                                                                                                                        |---|--------------|
-   | 1 | 0.008        |
-   | 2 | 0.05         |
-   | 3 | 0.12         |
-   | 4 | 0.188        |
-   | 5 | 0.251        |
-   | 6 | 1.025        |
-
-   </div>
+| **Order** | **dh_m (m)** |
+|-----------|--------------|
+| 1         | 0.008        |
+| 2         | 0.05         |
+| 3         | 0.12         |
+| 4         | 0.188        |
+| 5         | 0.251        |
+| 6         | 1.025        |
 
 8. To list all rule nodes used for all interpretations:
 

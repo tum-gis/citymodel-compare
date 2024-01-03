@@ -961,8 +961,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         m^2/s^2                     m2s2
          */
 
-        if (left.getUom().matches("urn:adv:uom:[m|mm|km]")) {
-            if (!right.getUom().matches("urn:adv:uom:[m|mm|km]")) return false;
+        // TODO Compare m2, etc.
+
+        if (left.getUom().matches("^urn:adv:uom:(m|mm|km)$")) {
+            if (!right.getUom().matches("^urn:adv:uom:(m|mm|km)$")) return false;
             double leftMetre = switch (left.getUom()) {
                 case "urn:adv:uom:mm" -> left.getValue() / 1000;
                 case "urn:adv:uom:m" -> left.getValue();
@@ -977,8 +979,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             };
             return Math.abs(leftMetre - rightMetre) <= config.MATCHER_TOLERANCE_LENGTHS;
         }
-        if (left.getUom().matches("urn:adv:uom:[grad|gon|rad]")) {
-            if (!right.getUom().matches("urn:adv:uom:[grad|gon|rad]")) return false;
+        if (left.getUom().matches("^urn:adv:uom:(grad|gon|rad)$")) {
+            if (!right.getUom().matches("^urn:adv:uom:(grad|gon|rad)$")) return false;
             double leftRad = switch (left.getUom()) {
                 case "urn:adv:uom:grad" -> Math.toRadians(left.getValue());
                 case "urn:adv:uom:gon" -> Math.toRadians(left.getValue() * 90. / 100.);
@@ -993,6 +995,41 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             };
             return Math.abs(leftRad - rightRad) <= config.MATCHER_TOLERANCE_ANGLES;
         }
+
+        // Same but without prefix
+        if (left.getUom().matches("^(m|mm|km)$")) {
+            if (!right.getUom().matches("^(m|mm|km)$")) return false;
+            double leftMetre = switch (left.getUom()) {
+                case "mm" -> left.getValue() / 1000;
+                case "m" -> left.getValue();
+                case "km" -> left.getValue() * 1000;
+                default -> Double.NaN;
+            };
+            double rightMetre = switch (right.getUom()) {
+                case "mm" -> right.getValue() / 1000;
+                case "m" -> right.getValue();
+                case "km" -> right.getValue() * 1000;
+                default -> Double.NaN;
+            };
+            return Math.abs(leftMetre - rightMetre) <= config.MATCHER_TOLERANCE_LENGTHS;
+        }
+        if (left.getUom().matches("^(grad|gon|rad)$")) {
+            if (!right.getUom().matches("^(grad|gon|rad)$")) return false;
+            double leftRad = switch (left.getUom()) {
+                case "grad" -> Math.toRadians(left.getValue());
+                case "gon" -> Math.toRadians(left.getValue() * 90. / 100.);
+                case "rad" -> left.getValue();
+                default -> Double.NaN;
+            };
+            double rightRad = switch (right.getUom()) {
+                case "grad" -> Math.toRadians(right.getValue());
+                case "gon" -> Math.toRadians(right.getValue() * 90. / 100.);
+                case "rad" -> right.getValue();
+                default -> Double.NaN;
+            };
+            return Math.abs(leftRad - rightRad) <= config.MATCHER_TOLERANCE_ANGLES;
+        }
+
         return left.getUom().equals(right.getUom())
                 && Math.abs(left.getValue() - right.getValue()) <= config.MATCHER_TOLERANCE_LENGTHS;
     }

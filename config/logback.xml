@@ -25,7 +25,7 @@
     <logger name="reactor.util.Loggers" level="OFF"/>
     <logger name="uk.co.jemos.podam" level="OFF"/>
 
-    <root level="debug">
+    <root level="info">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/>
     </root>

@@ -16,7 +16,6 @@ public class CityAnalysisApp {
         cityGMLNeo4jDB.diff(0, 1);
         cityGMLNeo4jDB.interpretDiff();
         cityGMLNeo4jDB.summarize();
-        cityGMLNeo4jDB.interpretDiff();
         //cityGMLNeo4jDB.close();
         cityGMLNeo4jDB.remainOpen();
     }

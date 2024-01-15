@@ -6,6 +6,7 @@ import com.github.davidmoten.rtree.geometry.Geometry;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.diff.Change;
+import jgraf.neo4j.diff.DeleteNodeChange;
 import jgraf.neo4j.diff.SizeChange;
 import jgraf.neo4j.diff.TranslationChange;
 import jgraf.neo4j.factory.AuxEdgeTypes;
@@ -13,6 +14,7 @@ import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.EdgeTypes;
 import jgraf.neo4j.factory.PropNames;
 import org.citygml4j.model.citygml.building.Building;
+import org.citygml4j.model.citygml.core.CityObjectMember;
 import org.neo4j.graphdb.*;
 import org.neo4j.graphdb.schema.IndexDefinition;
 import org.neo4j.graphdb.schema.Schema;
@@ -830,6 +832,11 @@ public class Patterns {
                 .expand(PathExpanders.forDirection(Direction.OUTGOING))
                 .evaluator(Evaluators.fromDepth(0)) // descendants may be node itself
                 .evaluator(path -> {
+                    boolean isDeleted = path.endNode().hasRelationship(Direction.INCOMING, AuxEdgeTypes.LEFT_NODE) &&
+                            path.endNode().getSingleRelationship(AuxEdgeTypes.LEFT_NODE, Direction.INCOMING)
+                                    .getStartNode().hasLabel(Label.label(DeleteNodeChange.class.getName()));
+                    if (isDeleted) return Evaluation.EXCLUDE_AND_PRUNE;
+
                     boolean isNotContained = notContainedLabels == null
                             || notContainedLabels.stream().noneMatch(l -> path.endNode().hasLabel(l));
                     if (!isNotContained) return Evaluation.EXCLUDE_AND_PRUNE;

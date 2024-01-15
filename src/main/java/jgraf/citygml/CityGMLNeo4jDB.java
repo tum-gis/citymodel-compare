@@ -300,6 +300,14 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     boolean tmpDiffFound = diff(tx, leftRelNode, rightRelNode, true,
                             null, ((DiffResultGeo) diffResult).getSkip());
                     if (tmpDiffFound) diffFound.set(true);
+                } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
+                    // Multiple top-level candidates split from the old one
+                    List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
+                            .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
+                                    EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
+                    rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
+                    Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
+                    diffFound.set(true);
                 } else {
                     // Found no match
                     diffFound.set(true);
@@ -548,6 +556,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     public void interpretDiff() {
+        dbStats.startTimer();
         Patterns.createRuleNetwork(
                 graphDb,
                 ((CityGMLNeo4jDBConfig) config).INTERPRETATION_RULES_PATH,
@@ -560,6 +569,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 config.MATCHER_TOLERANCE_LENGTHS,
                 config.MATCHER_CONCURRENT_TIMEOUT
         );
+        dbStats.stopTimer("Create rule network and match change patterns");
     }
 
     protected abstract boolean isTopLevel(Node node);

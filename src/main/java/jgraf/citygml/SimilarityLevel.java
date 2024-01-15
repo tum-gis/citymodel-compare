@@ -1,8 +1,9 @@
 package jgraf.citygml;
 
 public enum SimilarityLevel {
-    EQUIVALENCE(8),
-    SIMILAR_GEOMETRY(7),
+    EQUIVALENCE(9),
+    SIMILAR_GEOMETRY(8),
+    SPLIT_TOPLEVEL(7),
     SIMILAR_GEOMETRY_TRANSLATION(6),
     SIMILAR_GEOMETRY_SIZE_CHANGE(5),
     SAME_PROPS(4),

@@ -892,6 +892,13 @@ public class Patterns {
         return a.equals(b);
     }
 
+    public static void markTopSplitChange(Transaction tx, Class<?> changeClass, Node leftNode, List<Node> rightNodes) {
+        Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(changeClass.getName()));
+        node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
+        rightNodes.forEach(n -> node.createRelationshipTo(n, AuxEdgeTypes.RIGHT_NODE));
+        node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
+    }
+
     public static void markGeoChange(Transaction tx, Class<?> changeClass, Node leftNode, Node rightNode, double[] vector, double precision) {
         // Do not create a pattern node if an exact node like it already exists
         if (geoChangeExists(leftNode, rightNode, vector, precision)) return;

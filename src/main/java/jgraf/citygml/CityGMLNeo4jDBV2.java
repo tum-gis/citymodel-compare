@@ -279,6 +279,38 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 Arrays.asList(Label.label(Solid.class.getName())) // TODO Label list to skip for top-level features
                         ));
             }
+            // Check for ObjectSplit changes (whether this old top-level feature has been split)
+            Map<Neo4jGraphRef, Rectangle> partCandidates = new HashMap<>();
+            rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
+                Rectangle rightRectangle = (Rectangle) entry.geometry();
+                // Check for overlapping
+                double overlap = leftRectangle.intersectionArea(rightRectangle);
+                double rightArea = rightRectangle.area();
+                double overlapRatio = overlap / Math.sqrt(leftArea * rightArea);
+                if (overlapRatio > 0.2) { // TODO Define a config variable for this
+                    // Choose top-level features that may have been split from the reference one
+                    partCandidates.put(entry.value(), rightRectangle);
+                }
+            });
+            if (!partCandidates.isEmpty()) { // Multiple overlapping candidates -> sum their area
+                double sumRightArea = 0;
+                for (Map.Entry<Neo4jGraphRef, Rectangle> e : partCandidates.entrySet()) {
+                    sumRightArea += e.getValue().area();
+                }
+                if (sumRightArea / leftArea > config.MATCHER_TOLERANCE_SURFACES) {
+                    logger.debug("Found the best matching split candidates for {} with {}% >= {}% overlapping area using RTree",
+                            ClazzUtils.getSimpleClassName(leftTLNode),
+                            Math.round(sumRightArea / leftArea * 100),
+                            Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
+                    // Return parent node
+                    return new AbstractMap.SimpleEntry<>(null, // this first variable is not important
+                            new DiffResultTopSplit(
+                                    SimilarityLevel.SPLIT_TOPLEVEL,
+                                    sumRightArea / leftArea,
+                                    partCandidates.keySet().stream().toList() // this is important
+                            ));
+                }
+            }
             return new AbstractMap.SimpleEntry<>(null,
                     new DiffResult(SimilarityLevel.NONE, 0));
         }

@@ -56,14 +56,14 @@ MERGE (updated_prop:RULE {
   change_type: 'GlobalUpdatedBuildingIds',
   tags:        'update;thematic;toplevel;scope'
 })
-MERGE (updated_building_id)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*' // TODO Means ALL attributes of scope will be propagated
-}]->(clustered_updated_building_ids:RULE {
-  change_type: 'ClusteredUpdatedBuildingIds',
-  tags:        'update;thematic;toplevel;scope'
-})
+//MERGE (updated_building_id)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*' // TODO Means ALL attributes of scope will be propagated
+//}]->(clustered_updated_building_ids:RULE {
+//  change_type: 'ClusteredUpdatedBuildingIds',
+//  tags:        'update;thematic;toplevel;scope'
+//})
 
 // TODO bbox and circle are typically a result of a database modification action, while more complex shapes such as buffered zones are a result of changes in the real world (such as changes along a street, in a district)
 
@@ -86,14 +86,14 @@ MERGE (updated_prop)-[:AGGREGATED_TO {
   change_type: 'GlobalUpdatedBuildingCreationDates',
   tags:        'update;thematic;toplevel;scope'
 })
-MERGE (updated_building_creation_date)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_updated_building_creation_dates:RULE {
-  change_type: 'ClusteredUpdatedBuildingCreationDates',
-  tags:        'update;thematic;toplevel;scope'
-})
+//MERGE (updated_building_creation_date)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_updated_building_creation_dates:RULE {
+//  change_type: 'ClusteredUpdatedBuildingCreationDates',
+//  tags:        'update;thematic;toplevel;scope'
+//})
 
 // Rules for global updated buildings (with both updated IDs and creation dates)
 MERGE (global_updated_building_ids)-[:AGGREGATED_TO {
@@ -143,14 +143,14 @@ MERGE (updated_prop)-[:AGGREGATED_TO {
   change_type: 'GlobalUpdatedBuildingMeasuredHeights',
   tags:        'update;thematic;measurement;vertical;toplevel;scope'
 })
-MERGE (scope_updated_building_measured_heights)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_updated_building_measured_heights:RULE {
-  change_type: 'ClusteredUpdatedBuildingMeasuredHeights',
-  tags:        'update;thematic;measurement;vertical;toplevel;scope'
-})
+//MERGE (scope_updated_building_measured_heights)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_updated_building_measured_heights:RULE {
+//  change_type: 'ClusteredUpdatedBuildingMeasuredHeights',
+//  tags:        'update;thematic;measurement;vertical;toplevel;scope'
+//})
 
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -292,14 +292,14 @@ MERGE (translated_building_part)-[:AGGREGATED_TO {
   change_type: 'GlobalTranslatedBuildings_WithBParts',
   tags:        'translation;geometric;bpart;toplevel;scope'
 })
-MERGE (translated_building_with_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_translated_buildings_with_bparts:RULE {
-  change_type: 'ClusteredTranslatedBuildings_WithBParts',
-  tags:        'translation;geometric;bpart;toplevel;scope'
-})
+//MERGE (translated_building_with_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_translated_buildings_with_bparts:RULE {
+//  change_type: 'ClusteredTranslatedBuildings_WithBParts',
+//  tags:        'translation;geometric;bpart;toplevel;scope'
+//})
 
 // Rules for translated building surfaces (without building parts)
 MERGE (translated_roof)-[:AGGREGATED_TO {
@@ -365,14 +365,14 @@ MERGE (translated_building_no_bparts)-[:AGGREGATED_TO {
   change_type: 'GlobalTranslatedBuildings_NoBParts',
   tags:        'translation;geometric;toplevel;scope'
 })
-MERGE (translated_building_no_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_translated_buildings_no_bparts:RULE {
-  change_type: 'ClusteredTranslatedBuildings_NoBParts',
-  tags:        'translation;geometric;toplevel;scope'
-})
+//MERGE (translated_building_no_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_translated_buildings_no_bparts:RULE {
+//  change_type: 'ClusteredTranslatedBuildings_NoBParts',
+//  tags:        'translation;geometric;toplevel;scope'
+//})
 
 // Rules for translated buildings (with or without building parts)
 MERGE (translated_building_with_bparts)-[:AGGREGATED_TO {
@@ -402,14 +402,14 @@ MERGE (translated_building)-[:AGGREGATED_TO {
   change_type: 'GlobalTranslatedBuildings',
   tags:        'translation;geometric;toplevel;scope'
 })
-MERGE (translated_building)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_translated_buildings:RULE {
-  change_type: 'ClusteredTranslatedBuildings',
-  tags:        'translation;geometric;toplevel;scope'
-})
+//MERGE (translated_building)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_translated_buildings:RULE {
+//  change_type: 'ClusteredTranslatedBuildings',
+//  tags:        'translation;geometric;toplevel;scope'
+//})
 
 // TODO Document: The structure of the rule network becomes "wider" as higher levels are achieved,
 // in contrast to the resulting network of the interpretation nodes (like two compatible combs)
@@ -467,14 +467,14 @@ MERGE (size_changed_roof)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingRoofs_WithBParts',
   tags:        'size;geometric;surface;roof;bpart;toplevel;scope'
 })
-MERGE (size_changed_building_roofs_with_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_size_changed_building_roofs_with_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingRoofs_WithBParts',
-  tags:        'size;geometric;surface;roof;bpart;toplevel;scope'
-})
+//MERGE (size_changed_building_roofs_with_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_size_changed_building_roofs_with_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingRoofs_WithBParts',
+//  tags:        'size;geometric;surface;roof;bpart;toplevel;scope'
+//})
 
 // Rules for size-changed building part walls
 MERGE (size_changed_wall)-[:AGGREGATED_TO {
@@ -500,14 +500,14 @@ MERGE (size_changed_wall)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingWalls_WithBParts',
   tags:        'size;geometric;surface;wall;bpart;toplevel;scope'
 })
-MERGE (size_changed_building_walls_with_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_size_changed_building_walls_with_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingWalls_WithBParts',
-  tags:        'size;geometric;surface;wall;bpart;toplevel;scope'
-})
+//MERGE (size_changed_building_walls_with_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_size_changed_building_walls_with_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingWalls_WithBParts',
+//  tags:        'size;geometric;surface;wall;bpart;toplevel;scope'
+//})
 
 // Rules for size-changed building part grounds
 MERGE (size_changed_ground)-[:AGGREGATED_TO {
@@ -533,14 +533,14 @@ MERGE (size_changed_ground)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingGrounds_WithBParts',
   tags:        'size;geometric;surface;ground;bpart;toplevel;scope'
 })
-MERGE (size_changed_building_grounds_with_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_size_changed_building_grounds_with_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingGrounds_WithBParts',
-  tags:        'size;geometric;surface;ground;bpart;toplevel;scope'
-})
+//MERGE (size_changed_building_grounds_with_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_size_changed_building_grounds_with_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingGrounds_WithBParts',
+//  tags:        'size;geometric;surface;ground;bpart;toplevel;scope'
+//})
 
 // Rules for size-changed building roof surfaces (without building parts)
 MERGE (size_changed_roof)-[:AGGREGATED_TO {
@@ -560,14 +560,14 @@ MERGE (size_changed_roof)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingRoofs_NoBParts',
   tags:        'size;geometric;surface;roof;toplevel;scope'
 })
-MERGE (size_changed_building_roofs_no_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_size_changed_buildings_roofs_no_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingRoofs_NoBParts',
-  tags:        'size;geometric;surface;roof;toplevel;scope'
-})
+//MERGE (size_changed_building_roofs_no_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_size_changed_buildings_roofs_no_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingRoofs_NoBParts',
+//  tags:        'size;geometric;surface;roof;toplevel;scope'
+//})
 
 // Rules for size-changed building wall surfaces (without building parts)
 MERGE (size_changed_wall)-[:AGGREGATED_TO {
@@ -587,14 +587,14 @@ MERGE (size_changed_wall)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingWalls_NoBParts',
   tags:        'size;geometric;surface;wall;toplevel;scope'
 })
-MERGE (size_changed_building_walls_no_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_size_changed_buildings_walls_no_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingWalls_NoBParts',
-  tags:        'size;geometric;surface;wall;toplevel;scope'
-})
+//MERGE (size_changed_building_walls_no_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_size_changed_buildings_walls_no_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingWalls_NoBParts',
+//  tags:        'size;geometric;surface;wall;toplevel;scope'
+//})
 
 // Rules for size-changed building ground surfaces (without building parts)
 MERGE (size_changed_ground)-[:AGGREGATED_TO {
@@ -614,14 +614,14 @@ MERGE (size_changed_ground)-[:AGGREGATED_TO {
   change_type: 'GlobalSizeChangedBuildingGrounds_NoBParts',
   tags:        'size;geometric;surface;ground;toplevel;scope'
 })
-MERGE (size_changed_building_grounds_no_bparts)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered ',
-  propagate:         '*'
-}]->(clustered_size_changed_buildings_grounds_no_bparts:RULE {
-  change_type: 'ClusteredSizeChangedBuildingGrounds_NoBParts',
-  tags:        'size;geometric;surface;ground;toplevel;scope'
-})
+//MERGE (size_changed_building_grounds_no_bparts)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered ',
+//  propagate:         '*'
+//}]->(clustered_size_changed_buildings_grounds_no_bparts:RULE {
+//  change_type: 'ClusteredSizeChangedBuildingGrounds_NoBParts',
+//  tags:        'size;geometric;surface;ground;toplevel;scope'
+//})
 
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -666,14 +666,14 @@ MERGE (size_changed_building_walls_no_bparts)-[:AGGREGATED_TO {
   change_type: 'GlobalRaisedBuildingRoofs',
   tags:        'update;thematic;measurement;geometric;vertical;toplevel;scope'
 })
-MERGE (raised_building_roofs)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'clustered',
-  propagate:         '*'
-}]->(clustered_raised_building_roofs:RULE {
-  change_type: 'ClusteredRaisedBuildingRoofs',
-  tags:        'update;thematic;measurement;geometric;vertical;toplevel;scope'
-})
+//MERGE (raised_building_roofs)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  scope:             'clustered',
+//  propagate:         '*'
+//}]->(clustered_raised_building_roofs:RULE {
+//  change_type: 'ClusteredRaisedBuildingRoofs',
+//  tags:        'update;thematic;measurement;geometric;vertical;toplevel;scope'
+//})
 
 }
 

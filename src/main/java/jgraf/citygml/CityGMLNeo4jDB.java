@@ -14,6 +14,16 @@ import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
 import org.apache.commons.geometry.euclidean.threed.Plane;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.numbers.core.Precision;
+import org.citygml4j.CityGMLContext;
+import org.citygml4j.builder.jaxb.CityGMLBuilder;
+import org.citygml4j.builder.jaxb.CityGMLBuilderException;
+import org.citygml4j.core.model.CityGMLVersion;
+import org.citygml4j.model.citygml.CityGML;
+import org.citygml4j.model.citygml.core.CityModel;
+import org.citygml4j.xml.io.CityGMLInputFactory;
+import org.citygml4j.xml.io.reader.CityGMLReadException;
+import org.citygml4j.xml.io.reader.CityGMLReader;
+import org.citygml4j.xml.io.reader.FeatureReadMode;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +36,10 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -119,36 +128,102 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         logger.info("Finished mapping all files from config");
     }
 
+    // Map small files from a directory -> each file is loaded into one thread
+    // TODO Momentarily for CityGML v2.0 only
     protected void mapDirCityGML(Path path, int partitionIndex) {
+        dbStats.startTimer();
+
+        // Multi-threading
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
         // Set provides constant time for adds and removes of huge lists
         Set<Neo4jGraphRef> cityModelRefs = new HashSet<>();
         try (Stream<Path> st = Files.walk(path)) {
             st.filter(Files::isRegularFile).forEach(file -> {
-                cityModelRefs.add(mapFileCityGML(file.toString(), partitionIndex, false));
+                // One file one thread
+                executorService.submit((Callable<Void>) () -> {
+                    try {
+                        CityGMLNeo4jDBConfig cityGMLConfig = (CityGMLNeo4jDBConfig) config;
+                        if (cityGMLConfig.CITYGML_VERSION != CityGMLVersion.v2_0) {
+                            logger.warn("Found CityGML version {}, expected version {}",
+                                    cityGMLConfig.CITYGML_VERSION, CityGMLVersion.v2_0);
+                        }
+
+                        CityGMLContext ctx = CityGMLContext.getInstance();
+                        CityGMLBuilder builder = ctx.createCityGMLBuilder();
+                        CityGMLInputFactory in = builder.createCityGMLInputFactory();
+                        in.setProperty(CityGMLInputFactory.FEATURE_READ_MODE, FeatureReadMode.SPLIT_PER_COLLECTION_MEMBER);
+                        try (CityGMLReader reader = in.createCityGMLReader(file.toFile())) {
+                            logger.info("Reading tiled CityGML v2.0 file {} chunk-wise into main memory", file.toString());
+                            long tlCount = 0;
+                            while (reader.hasNext()) {
+                                CityGML chunk = reader.nextFeature();
+                                tlCount++;
+
+                                partitionPreProcessing(chunk);
+
+                                Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(chunk,
+                                        AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
+
+                                partitionMapPostProcessing(chunk, graphRef, partitionIndex, false);
+                                logger.debug("Mapped {} top-level features", tlCount);
+
+                                if (chunk instanceof CityModel) {
+                                    cityModelRefs.add(graphRef);
+                                }
+                            }
+                        }
+                    } catch (CityGMLBuilderException | CityGMLReadException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    return null;
+                });
             });
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+        }
+        dbStats.stopTimer("Map all input tiled files in " + path.toString());
+
+        logger.info("Resolve links of tiled files in input directory {} {},", partitionIndex, path.toString());
+        setIndexesIfNew();
+        resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
+
         // Merge all CityModel objects to one
+        dbStats.startTimer();
         try (Transaction tx = graphDb.beginTx()) {
+            Node mapperRoot = ROOT_MAPPER.getRepresentationNode(tx);
             Node mergedCityModelNode = null;
             for (Neo4jGraphRef cityModelRef : cityModelRefs) {
                 Node cityModelNode = cityModelRef.getRepresentationNode(tx);
                 if (mergedCityModelNode == null) {
                     mergedCityModelNode = GraphUtils.clone(tx, cityModelNode, true);
-                    connectCityModelToRoot(cityModelRef, Map.of(
-                            AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex,
-                            AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), getCityModelClass()
-                    ));
+                    // root -[rel]-> createdNode
+                    Relationship rel = mapperRoot.createRelationshipTo(mergedCityModelNode, AuxEdgeTypes.COLLECTION_MEMBER);
+                    rel.setProperty(AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex);
+                    rel.setProperty(AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), getCityModelClass().getName());
+                    logger.debug("Connected a city model to the database");
                     continue;
                 }
                 GraphUtils.cloneRelationships(cityModelNode, mergedCityModelNode, true);
                 cityModelNode.delete();
             }
+            tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
         }
+        dbStats.stopTimer("Merge all CityModel objects to one [" + partitionIndex + "]");
+
+        logger.info("Finished mapping directory {}", path.toString());
     }
 
     public void resolveXLinks(BiConsumer<Node, Node> resolveLinkRules,
@@ -625,7 +700,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             logger.info("Exported RTree footprint(s) to folder {}", folderPath);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Could not export RTree footprints " + e);
         }
     }
 

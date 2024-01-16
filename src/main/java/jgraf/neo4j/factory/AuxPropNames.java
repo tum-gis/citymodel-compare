@@ -22,7 +22,10 @@ public enum AuxPropNames {
     PROPERTY_VALUE,
     LEFT_PROPERTY_VALUE,
     RIGHT_PROPERTY_VALUE,
-    RELATIONSHIP_NAME;
+    RELATIONSHIP_NAME,
+
+    modCount,
+    size;
 
     public static boolean isIn(String name) {
         return Arrays.stream(values()).anyMatch(p -> name.startsWith(p.toString()) || name.endsWith(p.toString()));

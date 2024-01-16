@@ -1,12 +1,11 @@
 package jgraf.utils;
 
-import jgraf.neo4j.factory.AuxEdgeTypes;
-import jgraf.neo4j.factory.AuxNodeLabels;
-import jgraf.neo4j.factory.AuxPropNames;
-import jgraf.neo4j.factory.PropNames;
+import jgraf.neo4j.factory.*;
+import org.citygml4j.model.common.child.ChildList;
 import org.neo4j.graphdb.*;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -36,7 +35,7 @@ public class GraphUtils {
         for (int i = 0; i < labelArray.length; i++) {
             labelArray[i] = ll.get(i);
         }
-        Node clone = tx.createNode();
+        Node clone = tx.createNode(labelArray);
 
         // Properties
         for (Map.Entry<String, Object> entry : node.getAllProperties().entrySet()) {
@@ -54,17 +53,58 @@ public class GraphUtils {
     public static void cloneRelationships(Node source, Node clone, boolean delete) {
         for (Relationship rel : source.getRelationships()) {
             Relationship cloneRel = null;
+            boolean mergingArray = false;
             if (rel.getStartNode().equals(source)) {
                 // node is a start node
-                cloneRel = clone.createRelationshipTo(rel.getEndNode(), rel.getType());
+                if (rel.getEndNode().hasLabel(Label.label(ChildList.class.getName()))) { // TODO ChildList is in CityGML 2.0
+                    // (a)-[]->(ChildList)-[elementData]->(__ARRAY__ )->[ARRAY_MEMBER]->(b)
+                    //         modCount,Size              ARRAY_SIZE
+                    if (!clone.hasRelationship(Direction.OUTGOING, rel.getType())) {
+                        cloneRel = clone.createRelationshipTo(rel.getEndNode(), rel.getType());
+                    } else if (rel.getEndNode().hasLabel(Label.label(ChildList.class.getName()))) { // TODO ChildList is in CityGML 2.0
+                        mergingArray = true;
+                        Node sourceChildList = rel.getEndNode();
+                        Node sourceArray = sourceChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
+                        Node cloneChildList = clone.getSingleRelationship(rel.getType(), Direction.OUTGOING).getEndNode();
+                        Node cloneArray = cloneChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
+                        AtomicInteger count = new AtomicInteger();
+                        sourceArray.getRelationships(Direction.OUTGOING, AuxEdgeTypes.ARRAY_MEMBER).forEach(r -> {
+                            cloneArray.createRelationshipTo(r.getEndNode(), r.getType());
+                            if (delete) r.delete();
+                            count.getAndIncrement();
+                        });
+                        cloneArray.setProperty(AuxPropNames.ARRAY_SIZE.toString(),
+                                Integer.parseInt(cloneArray.getProperty(AuxPropNames.ARRAY_SIZE.toString()).toString())
+                                        + count.get());
+                        cloneChildList.setProperty(AuxPropNames.modCount.toString(),
+                                Integer.parseInt(cloneChildList.getProperty(AuxPropNames.modCount.toString()).toString())
+                                        + count.get());
+                        cloneChildList.setProperty(AuxPropNames.size.toString(),
+                                Integer.parseInt(cloneChildList.getProperty(AuxPropNames.size.toString()).toString())
+                                        + count.get());
+                        if (delete) {
+                            sourceChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).delete();
+                            sourceArray.delete();
+                            rel.delete();
+                            sourceChildList.delete();
+                        }
+                    }
+                } else {
+                    cloneRel = clone.createRelationshipTo(rel.getEndNode(), rel.getType());
+                }
             } else {
                 // node is an end node
                 cloneRel = rel.getStartNode().createRelationshipTo(clone, rel.getType());
             }
-            for (Map.Entry<String, Object> entry : rel.getAllProperties().entrySet()) {
-                cloneRel.setProperty(entry.getKey(), entry.getValue());
+
+            if (!mergingArray) {
+                for (Map.Entry<String, Object> entry : rel.getAllProperties().entrySet()) {
+                    cloneRel.setProperty(entry.getKey(), entry.getValue());
+                }
+
+                if (delete) rel.delete();
             }
-            if (delete) rel.delete();
+
         }
     }
 

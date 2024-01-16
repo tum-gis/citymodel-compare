@@ -196,7 +196,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
         dbStats.startTimer();
         logger.info("Resolve links of tiled files in input directory {} {},", partitionIndex, path.toString());
-        setIndexesIfNew();
+        //setIndexesIfNew(); // TODO
         resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
         dbStats.stopTimer("Resolve links of tiled files in input directory " + path.toString());
 

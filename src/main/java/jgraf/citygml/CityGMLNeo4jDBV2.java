@@ -428,8 +428,15 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (leftRelNode.hasLabel(Label.label(BoundarySurfaceProperty.class.getName()))) {
             // TODO BoundarySurfaceProperty of Bridge and Tunnel
             BoundarySurfaceProperty leftBsp = (BoundarySurfaceProperty) toObject(leftRelNode);
-            BoundingShape leftBbox = leftBsp.getBoundarySurface()
-                    .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
+            BoundingShape leftBbox = null;
+            try {
+                leftBbox = leftBsp.getBoundarySurface()
+                        .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
+            } catch (Exception e) {
+                logger.warn("Could not calculate bbox for BoundarySurfaceProperty {}", e.getMessage());
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
             List<Double> leftLower = leftBbox.getEnvelope().getLowerCorner().getValue();
             List<Double> leftUpper = leftBbox.getEnvelope().getUpperCorner().getValue();
             Vector3D leftCentroid = Vector3D.of(
@@ -438,6 +445,11 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     0.5 * (leftUpper.get(2) + leftLower.get(2))
             );
             Plane leftPlane = boundarySurfacePropertyToPlane(leftBsp, precision);
+            if (leftPlane == null) {
+                logger.warn("Could not calculate plane for BoundarySurfaceProperty");
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
             Vector3D.Unit leftNormal = leftPlane.getNormal();
 
             Node candidate = null;
@@ -446,8 +458,14 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 BoundarySurfaceProperty rightBsp = (BoundarySurfaceProperty) toObject(rightRelNode);
-                BoundingShape rightBbox = rightBsp.getBoundarySurface()
-                        .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
+                BoundingShape rightBbox = null;
+                try {
+                    rightBbox = rightBsp.getBoundarySurface()
+                            .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
+                } catch (Exception e) {
+                    logger.warn("Could not calculate bbox for BoundarySurfaceProperty {}", e.getMessage());
+                    continue;
+                }
                 List<Double> rightLower = rightBbox.getEnvelope().getLowerCorner().getValue();
                 List<Double> rightUpper = rightBbox.getEnvelope().getUpperCorner().getValue();
                 Vector3D rightCentroid = Vector3D.of(
@@ -456,6 +474,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         0.5 * (rightUpper.get(2) + rightLower.get(2))
                 );
                 Plane rightPlane = boundarySurfacePropertyToPlane(rightBsp, precision);
+                if (rightPlane == null) {
+                    logger.warn("Could not calculate plane for BoundarySurfaceProperty");
+                    continue;
+                }
                 Vector3D.Unit rightNormal = rightPlane.getNormal();
 
                 // Check for surface orientation
@@ -1162,7 +1184,11 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             Vector3D v = Vector3D.of(points.get(i), points.get(i + 1), points.get(i + 2));
             vectors.add(v);
         }
-        Plane plane = Planes.fromPoints(vectors, precision);
-        return plane;
+        try {
+            return Planes.fromPoints(vectors, precision);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Could not create plane from points: {}", e.getMessage());
+            return null;
+        }
     }
 }

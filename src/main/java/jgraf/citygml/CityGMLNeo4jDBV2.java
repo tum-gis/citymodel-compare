@@ -36,9 +36,7 @@ import org.citygml4j.model.gml.geometry.primitives.*;
 import org.citygml4j.model.gml.measures.Length;
 import org.citygml4j.util.bbox.BoundingBoxOptions;
 import org.citygml4j.xml.io.CityGMLInputFactory;
-import org.citygml4j.xml.io.reader.CityGMLReadException;
-import org.citygml4j.xml.io.reader.CityGMLReader;
-import org.citygml4j.xml.io.reader.FeatureReadMode;
+import org.citygml4j.xml.io.reader.*;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,7 +73,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
     @Override
     protected Neo4jGraphRef mapFileCityGML(String filePath, int partitionIndex, boolean connectToRoot) {
-        Neo4jGraphRef cityModelRef = null;
+        final Neo4jGraphRef[] cityModelRef = {null};
         try {
             CityGMLNeo4jDBConfig cityGMLConfig = (CityGMLNeo4jDBConfig) config;
             if (cityGMLConfig.CITYGML_VERSION != CityGMLVersion.v2_0) {
@@ -94,24 +92,34 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             long tlCount = 0;
             while (reader.hasNext()) {
-                CityGML chunk = reader.nextFeature();
+                final XMLChunk chunk = reader.nextChunk();
                 tlCount++;
 
-                partitionPreProcessing(chunk);
+                long finalTlCount = tlCount;
+                executorService.execute(() -> {
+                    try {
+                        CityGML object = chunk.unmarshal();
 
-                Neo4jGraphRef graphRef = executorService.submit(
-                        new CityGMLNeo4jDBMapWorker<Neo4jGraphRef>(this, chunk,
-                                AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex)
-                ).get();
+                        partitionPreProcessing(object);
 
-                partitionMapPostProcessing(chunk, graphRef, partitionIndex, connectToRoot);
-                logger.debug("Mapped {} top-level features", tlCount);
+                        Neo4jGraphRef graphRef = executorService.submit(
+                                new CityGMLNeo4jDBMapWorker<Neo4jGraphRef>(this, object,
+                                        AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex)
+                        ).get();
 
-                if (chunk instanceof CityModel) {
-                    if (cityModelRef != null)
-                        throw new RuntimeException("Found multiple CityModel objects in one file");
-                    cityModelRef = graphRef;
-                }
+                        partitionMapPostProcessing(object, graphRef, partitionIndex, connectToRoot);
+                        logger.debug("Mapped {} top-level features", finalTlCount);
+
+                        if (object instanceof CityModel) {
+                            if (cityModelRef[0] != null)
+                                throw new RuntimeException("Found multiple CityModel objects in one file");
+                            cityModelRef[0] = graphRef;
+                        }
+                    } catch (UnmarshalException | MissingADESchemaException | ExecutionException |
+                             InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
             }
 
             executorService.shutdown();
@@ -122,19 +130,18 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             } catch (InterruptedException e) {
                 executorService.shutdownNow();
             }
+            reader.close();
+            logger.info("Finished mapping file {}", filePath);
             dbStats.stopTimer("Map input file [" + partitionIndex + "]");
 
             dbStats.startTimer();
             setIndexesIfNew();
             resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
             dbStats.stopTimer("Resolve links of input file [" + partitionIndex + "]");
-
-            reader.close();
-            logger.info("Finished mapping file {}", filePath);
         } catch (CityGMLBuilderException | CityGMLReadException | ExecutionException | InterruptedException e) {
             throw new RuntimeException(e);
         }
-        return cityModelRef;
+        return cityModelRef[0];
     }
 
     @Override

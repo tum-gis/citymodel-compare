@@ -138,7 +138,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             setIndexesIfNew();
             resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
             dbStats.stopTimer("Resolve links of input file [" + partitionIndex + "]");
-        } catch (CityGMLBuilderException | CityGMLReadException | ExecutionException | InterruptedException e) {
+        } catch (CityGMLBuilderException | CityGMLReadException e) {
             throw new RuntimeException(e);
         }
         return cityModelRef[0];

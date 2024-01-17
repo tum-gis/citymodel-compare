@@ -665,6 +665,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     leftUpper.getZ() - leftLower.getZ()
             );
             List<Line3D> leftLines = multiCurveToLines3D(leftMultiCurve, precision);
+            if (leftLines == null) {
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
             Node candidate = null;
             Vector3D minTranslation = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
             double minTranslationNorm = minTranslation.norm();
@@ -685,6 +689,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         rightUpper.getZ() - rightLower.getZ()
                 );
                 List<Line3D> rightLines = multiCurveToLines3D(rightMultiCurve, precision);
+                if (rightLines == null) {
+                    continue;
+                }
 
                 // First, test if same size
                 if (leftSizes.eq(rightSizes, precision)) {
@@ -1131,6 +1138,17 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             // First line from first two points
             Vector3D point1 = Vector3D.of(points.get(0), points.get(1), points.get(2));
             Vector3D point2 = Vector3D.of(points.get(3), points.get(4), points.get(5));
+            int iPoint = 3;
+            while (point1.eq(point2, precision) && iPoint < points.size()) {
+                iPoint += 3;
+                point2 = Vector3D.of(points.get(iPoint), points.get(iPoint + 1), points.get(iPoint + 2));
+            }
+            logger.info("For lines: {},{},{} - {},{},{}", point1.getX(), point1.getY(), point1.getZ(),
+                    point2.getX(), point2.getY(), point2.getZ());
+            if (point1.eq(point2, precision)) {
+                logger.warn("LineString contains only collinear points, ignoring");
+                continue;
+            }
             lines.add(Lines3D.fromPoints(point1, point2, precision));
 
             int iSaved = 3;

@@ -232,10 +232,10 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                               Consumer<Node> correctLinkRules,
                               int partitionIndex) {
         logger.info("|--> Resolving XLinks");
-        try (Transaction tx = graphDb.beginTx()) {
-            mappedClassesSaved.stream()
-                    .filter(clazz -> ClazzUtils.isSubclass(clazz, hrefClasses))
-                    .forEach(hrefClass -> {
+        mappedClassesSaved.stream()
+                .filter(clazz -> ClazzUtils.isSubclass(clazz, hrefClasses))
+                .forEach(hrefClass -> {
+                    try (Transaction tx = graphDb.beginTx()) {
                         AtomicInteger transactionCount = new AtomicInteger();
                         tx.findNodes(Label.label(hrefClass.getName())).stream()
                                 .filter(hrefNode -> hrefNode.hasLabel(
@@ -268,10 +268,9 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                                 });
                         if (transactionCount.get() > 0)
                             logger.info("Found and resolved {} XLink(s)", transactionCount);
-                    });
-            tx.commit();
-        }
-
+                        tx.commit();
+                    }
+                });
         logger.info("-->| Resolved XLinks");
     }
 

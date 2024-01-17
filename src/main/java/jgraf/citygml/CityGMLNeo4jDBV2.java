@@ -1153,7 +1153,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             Vector3D point1 = Vector3D.of(points.get(0), points.get(1), points.get(2));
             Vector3D point2 = Vector3D.of(points.get(3), points.get(4), points.get(5));
             int iPoint = 3;
-            while (point1.eq(point2, precision) && iPoint < points.size()) {
+            while (point1.eq(point2, precision) && iPoint <= points.size() - 3) {
                 iPoint += 3;
                 point2 = Vector3D.of(points.get(iPoint), points.get(iPoint + 1), points.get(iPoint + 2));
             }

@@ -48,15 +48,6 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected void partitionPreProcessing(Object topLevelFeature) {
-        // Calculate bounding box (if needed)
-        if (topLevelFeature instanceof AbstractCityObject object) {
-            object.setBoundedBy(new BoundingShape(
-                    object.computeEnvelope(EnvelopeOptions.defaults().reuseExistingEnvelopes(true))));
-        }
-    }
-
-    @Override
     protected Neo4jGraphRef mapFileCityGML(String filePath, int partitionIndex, boolean connectToRoot) {
         final Neo4jGraphRef[] cityModelRef = {null};
         try {
@@ -86,7 +77,6 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                     long finalTlCount = tlCount;
                     executorService.submit((Callable<Void>) () -> {
                         AbstractFeature feature = chunk.build();
-                        partitionPreProcessing(feature);
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(feature,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
                         partitionMapPostProcessing(feature, graphRef, partitionIndex, connectToRoot);
@@ -157,6 +147,14 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected void setBoundingShape(Object cityObject) {
+        if (cityObject instanceof org.xmlobjects.gml.model.feature.AbstractFeature c) {
+            c.setBoundedBy(new BoundingShape(
+                    c.computeEnvelope(EnvelopeOptions.defaults().reuseExistingEnvelopes(true))));
+        }
+    }
+
+    @Override
     protected Node getTopLevelListNode(Node cityModelNode) {
         // TODO
         return null;
@@ -187,17 +185,30 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected double[] multiCurveBBox(Object multiCurve) {
+        return null;
+    }
+
+    @Override
     protected List<Line3D> multiCurveToLines3D(Object multiCurve, Precision.DoubleEquivalence precision) {
+        // TODO
         return null;
     }
 
     @Override
     protected boolean isMultiCurveContainedInLines3D(Object multiCurve, List<Line3D> lines, Precision.DoubleEquivalence precision) {
+        // TODO
         return false;
     }
 
     @Override
     protected Plane boundarySurfacePropertyToPlane(Object boundarySurfaceProperty, Precision.DoubleEquivalence precision) {
+        // TODO
+        return null;
+    }
+
+    @Override
+    protected double[] polygonBBox(Object polygon) {
         return null;
     }
 }

@@ -63,8 +63,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         Change.END_NODE_LABEL = Label.label(getCityModelClass().getName());
     }
 
-    protected abstract void partitionPreProcessing(Object topLevelFeature);
-
     protected abstract Neo4jGraphRef mapFileCityGML(String filePath, int partitionIndex, boolean connectToRoot);
 
     protected abstract Class<?> getCityModelClass();
@@ -101,7 +99,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
             logger.debug("Connected a city model to the database");
         } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + "A\n" + Arrays.toString(e.getStackTrace()));
         }
     }
 
@@ -133,22 +131,22 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     protected void mapDirCityGML(Path path, int partitionIndex) {
         dbStats.startTimer();
 
+        CityGMLNeo4jDBConfig cityGMLConfig = (CityGMLNeo4jDBConfig) config;
+        if (cityGMLConfig.CITYGML_VERSION != CityGMLVersion.v2_0) {
+            logger.warn("Found CityGML version {}, expected version {}",
+                    cityGMLConfig.CITYGML_VERSION, CityGMLVersion.v2_0);
+        }
+
         // Multi-threading
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
         // Set provides constant time for adds and removes of huge lists
-        Set<Neo4jGraphRef> cityModelRefs = new HashSet<>();
+        Set<Neo4jGraphRef> cityModelRefs = Collections.synchronizedSet(new HashSet<>());
         try (Stream<Path> st = Files.walk(path)) {
             st.filter(Files::isRegularFile).forEach(file -> {
                 // One file one thread
                 executorService.submit((Callable<Void>) () -> {
                     try {
-                        CityGMLNeo4jDBConfig cityGMLConfig = (CityGMLNeo4jDBConfig) config;
-                        if (cityGMLConfig.CITYGML_VERSION != CityGMLVersion.v2_0) {
-                            logger.warn("Found CityGML version {}, expected version {}",
-                                    cityGMLConfig.CITYGML_VERSION, CityGMLVersion.v2_0);
-                        }
-
                         CityGMLContext ctx = CityGMLContext.getInstance();
                         CityGMLBuilder builder = ctx.createCityGMLBuilder();
                         CityGMLInputFactory in = builder.createCityGMLInputFactory();
@@ -159,8 +157,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                             while (reader.hasNext()) {
                                 CityGML chunk = reader.nextFeature();
                                 tlCount++;
-
-                                partitionPreProcessing(chunk);
 
                                 Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(chunk,
                                         AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
@@ -221,7 +217,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             tx.commit();
         } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + "B\n" + Arrays.toString(e.getStackTrace()));
         }
         dbStats.stopTimer("Merge all CityModel objects to one [" + partitionIndex + "]");
 
@@ -351,7 +347,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
             tx.commit();
         } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + "C\n" + Arrays.toString(e.getStackTrace()));
         }
 
         // Multi-threading
@@ -376,13 +372,18 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                             null, ((DiffResultGeo) diffResult).getSkip());
                     if (tmpDiffFound) diffFound.set(true);
                 } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
-                    // Multiple top-level candidates split from the old one
-                    List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
-                            .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
-                                    EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
-                    rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
-                    Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
-                    diffFound.set(true);
+                    try{
+                        // Multiple top-level candidates split from the old one
+                        List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
+                                .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
+                                        EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
+                        rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
+                        Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
+                        diffFound.set(true);
+                    } catch (Exception e) {
+                        logger.error("THIS");
+                        throw new RuntimeException(e);
+                    }
                 } else {
                     // Found no match
                     diffFound.set(true);
@@ -390,7 +391,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 }
                 tx.commit();
             } catch (Exception e) {
-                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));
             }
         }));
 
@@ -419,7 +420,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 });
                 tx.commit();
             } catch (Exception e) {
-                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
             }
         }
 
@@ -684,11 +685,15 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract ConvexPolygon3D toConvexPolygon3D(Object polygon, Precision.DoubleEquivalence precision);
 
+    protected abstract double[] multiCurveBBox(Object multiCurve);
+
     protected abstract List<Line3D> multiCurveToLines3D(Object multiCurve, Precision.DoubleEquivalence precision);
 
     protected abstract boolean isMultiCurveContainedInLines3D(Object multiCurve, List<Line3D> lines, Precision.DoubleEquivalence precision);
 
     protected abstract Plane boundarySurfacePropertyToPlane(Object boundarySurfaceProperty, Precision.DoubleEquivalence precision);
+
+    protected abstract double[] polygonBBox(Object polygon);
 
     public void exportRTreeFootprints(String folderPath) {
         try {
@@ -716,7 +721,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
             logger.info("-->| Stored RTrees in the database");
         } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + "F\n" + Arrays.toString(e.getStackTrace()));
         }
     }
 

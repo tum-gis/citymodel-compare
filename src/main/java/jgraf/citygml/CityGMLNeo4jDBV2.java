@@ -18,7 +18,6 @@ import org.citygml4j.CityGMLContext;
 import org.citygml4j.builder.jaxb.CityGMLBuilder;
 import org.citygml4j.builder.jaxb.CityGMLBuilderException;
 import org.citygml4j.core.model.CityGMLVersion;
-import org.citygml4j.geometry.BoundingBox;
 import org.citygml4j.geometry.Matrix;
 import org.citygml4j.model.citygml.CityGML;
 import org.citygml4j.model.citygml.building.BoundarySurfaceProperty;
@@ -65,9 +64,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected void partitionPreProcessing(Object topLevelFeature) {
-        // Calculate bounding box (if needed)
-        if (topLevelFeature instanceof AbstractCityObject object) {
+    protected void setBoundingShape(Object cityObject) {
+        if (cityObject instanceof AbstractCityObject object) {
             object.setBoundedBy(object.calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true)));
         }
     }
@@ -100,7 +98,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 executorService.execute(() -> {
                     try {
                         CityGML object = chunk.unmarshal();
-                        partitionPreProcessing(object);
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(object,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
                         partitionMapPostProcessing(object, graphRef, partitionIndex, connectToRoot);
@@ -207,7 +204,11 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     .collect(Collectors.toSet())
                     .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
             String leftUuid = leftTLNode.getProperty(AuxPropNames.__UUID__.toString()).toString();
-            Rectangle leftRectangle = GraphUtils.getBoundingBox(leftTLNode);
+            double[] tmpBBox = GraphUtils.getBoundingBox(leftTLNode);
+            Rectangle leftRectangle = Geometries.rectangle(
+                    tmpBBox[0], tmpBBox[1],
+                    tmpBBox[3], tmpBBox[4]
+            );
             double leftArea = leftRectangle.area();
             double leftWidth = leftRectangle.x2() - leftRectangle.x1();
             double leftHeight = leftRectangle.y2() - leftRectangle.y1();
@@ -319,19 +320,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (leftRelNode.hasLabel(Label.label(BuildingPartProperty.class.getName()))
                 || leftRelNode.hasLabel(Label.label(Solid.class.getName()))) {
             boolean isBuildingPartProperty = leftRelNode.hasLabel(Label.label(BuildingPartProperty.class.getName()));
-            BoundingBox leftBbox = null;
-            if (isBuildingPartProperty) {
-                BuildingPartProperty leftBPartProperty = (BuildingPartProperty) toObject(leftRelNode);
-                leftBbox = leftBPartProperty.getBuildingPart()
-                        .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true))
-                        .getEnvelope().toBoundingBox();
-            } else {
-                Solid leftSolid = (Solid) toObject(leftRelNode);
-                leftBbox = leftSolid.calcBoundingBox();
-            }
+            double[] tmpLeftBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
+                    leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                    : leftRelNode);
             RegionBSPTree3D leftRegion = GeometryUtils.toRegion3D(
-                    leftBbox.getLowerCorner().toList(),
-                    leftBbox.getUpperCorner().toList(),
+                    List.of(tmpLeftBBox[0], tmpLeftBBox[1], tmpLeftBBox[2]),
+                    List.of(tmpLeftBBox[3], tmpLeftBBox[4], tmpLeftBBox[5]),
                     precision
             );
             double leftVolume = leftRegion.getSize();
@@ -344,19 +338,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
                     .forEach(rightRel -> {
                         Node rightRelNode = rightRel.getEndNode();
-                        BoundingBox rightBbox = null;
-                        if (isBuildingPartProperty) {
-                            BuildingPartProperty rightBPartProperty = (BuildingPartProperty) toObject(rightRelNode);
-                            rightBbox = rightBPartProperty.getBuildingPart()
-                                    .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true))
-                                    .getEnvelope().toBoundingBox();
-                        } else {
-                            Solid rightSolid = (Solid) toObject(rightRelNode);
-                            rightBbox = rightSolid.calcBoundingBox();
-                        }
+                        double[] tmpRightBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
+                                rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                                : rightRelNode);
                         RegionBSPTree3D rightRegion = GeometryUtils.toRegion3D(
-                                rightBbox.getLowerCorner().toList(),
-                                rightBbox.getUpperCorner().toList(),
+                                List.of(tmpRightBBox[0], tmpRightBBox[1], tmpRightBBox[2]),
+                                List.of(tmpRightBBox[3], tmpRightBBox[4], tmpRightBBox[5]),
                                 precision
                         );
                         double rightVolume = rightRegion.getSize();
@@ -428,25 +415,16 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (leftRelNode.hasLabel(Label.label(BoundarySurfaceProperty.class.getName()))) {
             // TODO BoundarySurfaceProperty of Bridge and Tunnel
             BoundarySurfaceProperty leftBsp = (BoundarySurfaceProperty) toObject(leftRelNode);
-            BoundingShape leftBbox = null;
-            try {
-                leftBbox = leftBsp.getBoundarySurface()
-                        .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
-            } catch (Exception e) {
-                logger.warn("Could not calculate bbox for BoundarySurfaceProperty {}", e.getMessage());
-                return new AbstractMap.SimpleEntry<>(null,
-                        new DiffResult(SimilarityLevel.NONE, 0));
-            }
-            List<Double> leftLower = leftBbox.getEnvelope().getLowerCorner().getValue();
-            List<Double> leftUpper = leftBbox.getEnvelope().getUpperCorner().getValue();
+            double[] tmpLeftBBox = GraphUtils.getBoundingBox(
+                    leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
             Vector3D leftCentroid = Vector3D.of(
-                    0.5 * (leftUpper.get(0) + leftLower.get(0)),
-                    0.5 * (leftUpper.get(1) + leftLower.get(1)),
-                    0.5 * (leftUpper.get(2) + leftLower.get(2))
+                    0.5 * (tmpLeftBBox[0] + tmpLeftBBox[3]),
+                    0.5 * (tmpLeftBBox[1] + tmpLeftBBox[4]),
+                    0.5 * (tmpLeftBBox[2] + tmpLeftBBox[5])
             );
             Plane leftPlane = boundarySurfacePropertyToPlane(leftBsp, precision);
             if (leftPlane == null) {
-                logger.warn("Could not calculate plane for BoundarySurfaceProperty");
+                logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", leftRelNode.getElementId());
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             }
@@ -458,24 +436,16 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 BoundarySurfaceProperty rightBsp = (BoundarySurfaceProperty) toObject(rightRelNode);
-                BoundingShape rightBbox = null;
-                try {
-                    rightBbox = rightBsp.getBoundarySurface()
-                            .calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true));
-                } catch (Exception e) {
-                    logger.warn("Could not calculate bbox for BoundarySurfaceProperty {}", e.getMessage());
-                    continue;
-                }
-                List<Double> rightLower = rightBbox.getEnvelope().getLowerCorner().getValue();
-                List<Double> rightUpper = rightBbox.getEnvelope().getUpperCorner().getValue();
+                double[] tmpRightBBox = GraphUtils.getBoundingBox(
+                        rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
                 Vector3D rightCentroid = Vector3D.of(
-                        0.5 * (rightUpper.get(0) + rightLower.get(0)),
-                        0.5 * (rightUpper.get(1) + rightLower.get(1)),
-                        0.5 * (rightUpper.get(2) + rightLower.get(2))
+                        0.5 * (tmpRightBBox[0] + tmpRightBBox[3]),
+                        0.5 * (tmpRightBBox[1] + tmpRightBBox[4]),
+                        0.5 * (tmpRightBBox[2] + tmpRightBBox[5])
                 );
                 Plane rightPlane = boundarySurfacePropertyToPlane(rightBsp, precision);
                 if (rightPlane == null) {
-                    logger.warn("Could not calculate plane for BoundarySurfaceProperty");
+                    logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", rightRelNode.getElementId());
                     continue;
                 }
                 Vector3D.Unit rightNormal = rightPlane.getNormal();
@@ -535,21 +505,19 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             Polygon leftPolygon = (Polygon) leftSurfaceProperty.getObject();
 
             // Using bbox for convex and non-convex polygons
-            BoundingBox leftBbox = leftPolygon.calcBoundingBox();
-            org.citygml4j.geometry.Point leftLower = leftBbox.getLowerCorner();
-            org.citygml4j.geometry.Point leftUpper = leftBbox.getUpperCorner();
+            double[] tmpLeftBBox = polygonBBox(leftPolygon);
             Vector3D leftSizes = Vector3D.of(
-                    leftUpper.getX() - leftLower.getX(),
-                    leftUpper.getY() - leftLower.getY(),
-                    leftUpper.getZ() - leftLower.getZ()
+                    tmpLeftBBox[3] - tmpLeftBBox[0],
+                    tmpLeftBBox[4] - tmpLeftBBox[1],
+                    tmpLeftBBox[5] - tmpLeftBBox[2]
             );
             Vector3D leftCentroid = Vector3D.of(
-                    0.5 * (leftLower.getX() + leftUpper.getX()),
-                    0.5 * (leftLower.getY() + leftUpper.getY()),
-                    0.5 * (leftLower.getZ() + leftUpper.getZ())
+                    0.5 * (tmpLeftBBox[0] + tmpLeftBBox[3]),
+                    0.5 * (tmpLeftBBox[1] + tmpLeftBBox[4]),
+                    0.5 * (tmpLeftBBox[2] + tmpLeftBBox[5])
             );
 
-            ArrayList<Double> leftPoints = new ArrayList<>(leftPolygon.getExterior().getRing().toList3d());
+            List<Double> leftPoints = toDoubleList(leftPolygon.getExterior().getRing().toList3d());
             Node candidate = null;
             Vector3D minTranslation = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
             double minTranslationNorm = config.MATCHER_TRANSLATION_DISTANCE;
@@ -557,18 +525,16 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 Node rightRelNode = rightRel.getEndNode();
                 SurfaceProperty rightSurfaceProperty = (SurfaceProperty) toObject(rightRelNode);
                 Polygon rightPolygon = (Polygon) rightSurfaceProperty.getObject(); // TODO Other geometries than Polygons?
-                BoundingBox rightBbox = rightPolygon.calcBoundingBox();
-                org.citygml4j.geometry.Point rightLower = rightBbox.getLowerCorner();
-                org.citygml4j.geometry.Point rightUpper = rightBbox.getUpperCorner();
+                double[] tmpRightBBox = polygonBBox(rightPolygon);
                 Vector3D rightSizes = Vector3D.of(
-                        rightUpper.getX() - rightLower.getX(),
-                        rightUpper.getY() - rightLower.getY(),
-                        rightUpper.getZ() - rightLower.getZ()
+                        tmpRightBBox[3] - tmpRightBBox[0],
+                        tmpRightBBox[4] - tmpRightBBox[1],
+                        tmpRightBBox[5] - tmpRightBBox[2]
                 );
                 Vector3D rightCentroid = Vector3D.of(
-                        0.5 * (rightLower.getX() + rightUpper.getX()),
-                        0.5 * (rightLower.getY() + rightUpper.getY()),
-                        0.5 * (rightLower.getZ() + rightUpper.getZ())
+                        0.5 * (tmpRightBBox[0] + tmpRightBBox[3]),
+                        0.5 * (tmpRightBBox[1] + tmpRightBBox[4]),
+                        0.5 * (tmpRightBBox[2] + tmpRightBBox[5])
                 );
 
                 // First, test if same size
@@ -601,12 +567,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 leftPoints.get(k), leftPoints.get(k + 1), leftPoints.get(k + 2));
                         p.transform3D(translationMatrix);
                         // TODO Check if this translation is along only one axis (side moving, vertical raise, etc.)
-                        if (!(precision.gte(p.getX(), rightLower.getX())
-                                && precision.gte(p.getY(), rightLower.getY())
-                                && precision.gte(p.getZ(), rightLower.getZ())
-                                && precision.lte(p.getX(), rightUpper.getX())
-                                && precision.lte(p.getY(), rightUpper.getY())
-                                && precision.lte(p.getZ(), rightUpper.getZ()))
+                        if (!(precision.gte(p.getX(), tmpRightBBox[0])
+                                && precision.gte(p.getY(), tmpRightBBox[1])
+                                && precision.gte(p.getZ(), tmpRightBBox[2])
+                                && precision.lte(p.getX(), tmpRightBBox[3])
+                                && precision.lte(p.getY(), tmpRightBBox[4])
+                                && precision.lte(p.getZ(), tmpRightBBox[5]))
                         ) {
                             break;
                         }
@@ -651,18 +617,20 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         // MultiCurves that contain LineStrings
         if (leftRelNode.hasLabel(Label.label(MultiCurve.class.getName()))) {
             MultiCurve leftMultiCurve = (MultiCurve) toObject(leftRelNode);
-            BoundingBox leftBbox = leftMultiCurve.calcBoundingBox();
-            org.citygml4j.geometry.Point leftLower = leftBbox.getLowerCorner();
-            org.citygml4j.geometry.Point leftUpper = leftBbox.getUpperCorner();
+            double[] tmpLeftBbox = multiCurveBBox(leftMultiCurve);
+            if (tmpLeftBbox == null) {
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
             Vector3D leftCentroid = Vector3D.of(
-                    (leftLower.getX() + leftUpper.getX()) / 2.,
-                    (leftLower.getY() + leftUpper.getY()) / 2.,
-                    (leftLower.getZ() + leftUpper.getZ()) / 2.
+                    (tmpLeftBbox[0] + tmpLeftBbox[3]) / 2.,
+                    (tmpLeftBbox[1] + tmpLeftBbox[4]) / 2.,
+                    (tmpLeftBbox[2] + tmpLeftBbox[5]) / 2.
             );
             Vector3D leftSizes = Vector3D.of(
-                    leftUpper.getX() - leftLower.getX(),
-                    leftUpper.getY() - leftLower.getY(),
-                    leftUpper.getZ() - leftLower.getZ()
+                    tmpLeftBbox[3] - tmpLeftBbox[0],
+                    tmpLeftBbox[4] - tmpLeftBbox[1],
+                    tmpLeftBbox[5] - tmpLeftBbox[2]
             );
             List<Line3D> leftLines = multiCurveToLines3D(leftMultiCurve, precision);
             if (leftLines == null) {
@@ -675,18 +643,19 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 MultiCurve rightMultiCurve = (MultiCurve) toObject(rightRelNode);
-                BoundingBox rightBbox = rightMultiCurve.calcBoundingBox();
-                org.citygml4j.geometry.Point rightLower = rightBbox.getLowerCorner();
-                org.citygml4j.geometry.Point rightUpper = rightBbox.getUpperCorner();
+                double[] tmpRightBbox = multiCurveBBox(rightMultiCurve);
+                if (tmpRightBbox == null) {
+                    continue;
+                }
                 Vector3D rightCentroid = Vector3D.of(
-                        (rightLower.getX() + rightUpper.getX()) / 2.,
-                        (rightLower.getY() + rightUpper.getY()) / 2.,
-                        (rightLower.getZ() + rightUpper.getZ()) / 2.
+                        (tmpRightBbox[0] + tmpRightBbox[3]) / 2.,
+                        (tmpRightBbox[1] + tmpRightBbox[4]) / 2.,
+                        (tmpRightBbox[2] + tmpRightBbox[5]) / 2.
                 );
                 Vector3D rightSizes = Vector3D.of(
-                        rightUpper.getX() - rightLower.getX(),
-                        rightUpper.getY() - rightLower.getY(),
-                        rightUpper.getZ() - rightLower.getZ()
+                        tmpRightBbox[3] - tmpRightBbox[0],
+                        tmpRightBbox[4] - tmpRightBbox[1],
+                        tmpRightBbox[5] - tmpRightBbox[2]
                 );
                 List<Line3D> rightLines = multiCurveToLines3D(rightMultiCurve, precision);
                 if (rightLines == null) {
@@ -1101,14 +1070,15 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (!poly.isSetExterior()) return null;
 
         List<Vector3D> vectorList = new ArrayList<>(); // path must be closed (last = first)
-        List<Double> ps = poly.getExterior().getRing().toList3d();
-        for (int i = 0; i < ps.size(); i += 3) {
+        List<Double> points = toDoubleList(poly.getExterior().getRing().toList3d());
+
+        for (int i = 0; i < points.size(); i += 3) {
             //double x = Double.parseDouble(String.valueOf(ps.get(i)));
             //double y = Double.parseDouble(String.valueOf(ps.get(i + 1)));
             //double z = Double.parseDouble(String.valueOf(ps.get(i + 2)));
-            double x = ps.get(i);
-            double y = ps.get(i + 1);
-            double z = ps.get(i + 2);
+            double x = points.get(i);
+            double y = points.get(i + 1);
+            double z = points.get(i + 2);
             vectorList.add(Vector3D.of(x, y, z));
         }
 
@@ -1123,14 +1093,58 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected double[] multiCurveBBox(Object multiCurve) {
+        if (!(multiCurve instanceof MultiCurve mc)) return null;
+        List<Double> points = new ArrayList<>();
+        for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
+            LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
+            List<Double> tmpPoints = toDoubleList(ls.toList3d());
+            points.addAll(tmpPoints);
+        }
+        double[] bbox = new double[6];
+        double minX = Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE;
+        double minZ = Double.MAX_VALUE;
+        double maxX = Double.MIN_VALUE;
+        double maxY = Double.MIN_VALUE;
+        double maxZ = Double.MIN_VALUE;
+        for (int i = 0; i < points.size(); i += 3) {
+            double vX = points.get(i);
+            double vY = points.get(i + 1);
+            double vZ = points.get(i + 2);
+            if (vX < minX) {
+                minX = vX;
+            } else if (vX > maxX) {
+                maxX = vX;
+            }
+            if (vY < minY) {
+                minY = vY;
+            } else if (vY > maxY) {
+                maxY = vY;
+            }
+            if (vZ < minZ) {
+                minZ = vZ;
+            } else if (vZ > maxZ) {
+                maxZ = vZ;
+            }
+        }
+        bbox[0] = minX;
+        bbox[1] = minY;
+        bbox[2] = minZ;
+        bbox[3] = maxX;
+        bbox[4] = maxY;
+        bbox[5] = maxZ;
+        return bbox;
+    }
+
+    @Override
     // Create a list of lines containing non-collinear points given in a multiCurve
     protected List<Line3D> multiCurveToLines3D(Object multiCurve, Precision.DoubleEquivalence precision) {
         if (!(multiCurve instanceof MultiCurve mc)) return null;
         List<Line3D> lines = new ArrayList<>();
         for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
             LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
-            List<Double> points = ls.toList3d();
-
+            List<Double> points = toDoubleList(ls.toList3d());
             if (points.size() < 6) {
                 logger.warn("LineString contains too few points");
                 continue;
@@ -1143,8 +1157,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 iPoint += 3;
                 point2 = Vector3D.of(points.get(iPoint), points.get(iPoint + 1), points.get(iPoint + 2));
             }
-            logger.info("For lines: {},{},{} - {},{},{}", point1.getX(), point1.getY(), point1.getZ(),
-                    point2.getX(), point2.getY(), point2.getZ());
             if (point1.eq(point2, precision)) {
                 logger.warn("LineString contains only collinear points, ignoring");
                 continue;
@@ -1170,7 +1182,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (!(multiCurve instanceof MultiCurve mc)) return false;
         for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
             LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
-            List<Double> points = ls.toList3d();
+            List<Double> points = toDoubleList(ls.toList3d());
             for (int i = 0; i < points.size(); i += 3) {
                 boolean contained = false;
                 for (Line3D line : lines) {
@@ -1195,7 +1207,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         List<Double> points = new ArrayList<>();
         for (SurfaceProperty sp : sm) {
             Polygon poly = (Polygon) sp.getSurface(); // TODO Other types than Polygon?
-            points.addAll(poly.getExterior().getRing().toList3d());
+            points.addAll(toDoubleList(poly.getExterior().getRing().toList3d()));
         }
         List<Vector3D> vectors = new ArrayList<>();
         for (int i = 0; i < points.size(); i += 3) {
@@ -1205,8 +1217,59 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         try {
             return Planes.fromPoints(vectors, precision);
         } catch (IllegalArgumentException e) {
-            logger.warn("Could not create plane from points: {}", e.getMessage());
+            logger.warn("Could not create plane from points: {} {}", Arrays.toString(vectors.toArray()), e.getMessage());
             return null;
         }
+    }
+
+    @Override
+    protected double[] polygonBBox(Object polygon) {
+        if (!(polygon instanceof Polygon poly)) return null;
+        if (!poly.isSetExterior()) return null;
+        List<Double> points = toDoubleList(poly.getExterior().getGeometry().toList3d());
+
+        double[] bbox = new double[6];
+        double minX = Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE;
+        double minZ = Double.MAX_VALUE;
+        double maxX = Double.MIN_VALUE;
+        double maxY = Double.MIN_VALUE;
+        double maxZ = Double.MIN_VALUE;
+        for (int i = 0; i < points.size(); i += 3) {
+            double vX = Double.parseDouble(points.get(i) + "");
+            double vY = Double.parseDouble(points.get(i + 1) + "");
+            double vZ = Double.parseDouble(points.get(i + 2) + "");
+            if (vX < minX) {
+                minX = vX;
+            } else if (vX > maxX) {
+                maxX = vX;
+            }
+            if (vY < minY) {
+                minY = vY;
+            } else if (vY > maxY) {
+                maxY = vY;
+            }
+            if (vZ < minZ) {
+                minZ = vZ;
+            } else if (vZ > maxZ) {
+                maxZ = vZ;
+            }
+        }
+        bbox[0] = minX;
+        bbox[1] = minY;
+        bbox[2] = minZ;
+        bbox[3] = maxX;
+        bbox[4] = maxY;
+        bbox[5] = maxZ;
+        return bbox;
+    }
+
+    // TODO This is used to convert list strings to list of doubles -> Check if this is still needed
+    private List<Double> toDoubleList(List<Double> list) {
+        List<Double> result = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            result.add(Double.parseDouble(list.get(i) + ""));
+        }
+        return result;
     }
 }

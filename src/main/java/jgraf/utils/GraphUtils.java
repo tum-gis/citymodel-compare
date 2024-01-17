@@ -12,9 +12,9 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class GraphUtils {
-    public static Rectangle getBoundingBox(Node toplevelNode) { // Building
+    public static double[] getBoundingBox(Node abstractCityObjectNode) { // Building or BuildingPart // TODO This is momentarily only in CityGML v2
         try {
-            Node envelope = toplevelNode
+            Node envelope = abstractCityObjectNode
                     .getSingleRelationship(EdgeTypes.boundedBy, Direction.OUTGOING).getEndNode()
                     .getSingleRelationship(EdgeTypes.envelope, Direction.OUTGOING).getEndNode();
             Node lowerCorner = envelope
@@ -26,13 +26,15 @@ public class GraphUtils {
                     .getSingleRelationship(EdgeTypes.value, Direction.OUTGOING).getEndNode()
                     .getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
             // TODO Compare classes Envelope and DirectPosition in CityGMl v2 and v3 here
-            double iminx = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
-            double iminy = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
-            double imaxx = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
-            double imaxy = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
-            return Geometries.rectangle(iminx, iminy, imaxx, imaxy);
-        } catch (NullPointerException e) {
-            return null;
+            double iminX = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
+            double iminY = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
+            double iminZ = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[2]").toString());
+            double imaxX = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
+            double imaxY = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
+            double imaxZ = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[2]").toString());
+            return new double[]{iminX, iminY, iminZ, imaxX, imaxY, imaxZ};
+        } catch (NumberFormatException e) {
+            throw new RuntimeException(e);
         }
     }
 

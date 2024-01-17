@@ -13,9 +13,6 @@ import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
 import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
-import org.neo4j.configuration.GraphDatabaseSettings;
-import org.neo4j.configuration.connectors.BoltConnector;
-import org.neo4j.configuration.helpers.SocketAddress;
 import org.neo4j.dbms.api.DatabaseManagementService;
 import org.neo4j.dbms.api.DatabaseManagementServiceBuilder;
 import org.neo4j.graphdb.*;
@@ -35,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class Neo4jDB implements GraphDB {
+public abstract class Neo4jDB implements GraphDB {
     protected Neo4jDBConfig config;
     protected DatabaseManagementService managementService;
     protected GraphDatabaseService graphDb;
@@ -149,6 +146,9 @@ public class Neo4jDB implements GraphDB {
         }
         // logger.debug("Mapping {}", clazz.getSimpleName());
 
+        // Calculate bounding box if available
+        setBoundingShape(source);
+
         // Check if this object has been mapped before, if yes return this mapped node instead of creating a new one
         // The scope of this cycle detection check is only within the source object TODO
         Node mappedNode = mapped.get(source);
@@ -261,6 +261,32 @@ public class Neo4jDB implements GraphDB {
             if (!graphNode.getRelationships(Direction.OUTGOING).stream().iterator().hasNext()) {
                 // Array members are stored as properties
                 Map<String, Object> properties = graphNode.getAllProperties();
+
+                if (componentType.equals(Object.class)) {
+                    // Check whether this is an array of Double, String, or Object
+                    int keyCount = 0;
+                    boolean allDoubles = true;
+                    boolean allIntegers = true;
+                    for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                        keyCount++;
+                        if (!entry.getValue().toString().matches("[0-9]+[.,][0-9]+")) {
+                            if (!entry.getValue().toString().matches("[0-9]+")) {
+                                allDoubles = false;
+                                allIntegers = false;
+                                break;
+                            }
+                            allDoubles = false;
+                        } else {
+                            allIntegers = false;
+                        }
+                    }
+                    if (allDoubles) {
+                        componentType = Double.class;
+                    } else if (allIntegers) {
+                        componentType = Integer.class;
+                    }
+                }
+
                 for (Map.Entry<String, Object> entry : properties.entrySet()) {
                     if (entry.getKey().matches(AuxPropNames.ARRAY_MEMBER + "\\[[0-9]+\\]")) {
                         int index = Integer.parseInt(entry.getKey()
@@ -436,6 +462,8 @@ public class Neo4jDB implements GraphDB {
         // running application).
         Runtime.getRuntime().addShutdownHook(new Thread(managementService::shutdown));
     }
+
+    protected abstract void setBoundingShape(Object cityObject);
 
     public BaseDBConfig getConfig() {
         return config;

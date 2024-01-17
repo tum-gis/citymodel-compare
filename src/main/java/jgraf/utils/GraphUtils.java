@@ -1,5 +1,7 @@
 package jgraf.utils;
 
+import com.github.davidmoten.rtree.geometry.Geometries;
+import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.factory.*;
 import org.citygml4j.model.common.child.ChildList;
 import org.neo4j.graphdb.*;
@@ -10,6 +12,30 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class GraphUtils {
+    public static Rectangle getBoundingBox(Node toplevelNode) { // Building
+        try {
+            Node envelope = toplevelNode
+                    .getSingleRelationship(EdgeTypes.boundedBy, Direction.OUTGOING).getEndNode()
+                    .getSingleRelationship(EdgeTypes.envelope, Direction.OUTGOING).getEndNode();
+            Node lowerCorner = envelope
+                    .getSingleRelationship(EdgeTypes.lowerCorner, Direction.OUTGOING).getEndNode()
+                    .getSingleRelationship(EdgeTypes.value, Direction.OUTGOING).getEndNode()
+                    .getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
+            Node upperCorner = envelope
+                    .getSingleRelationship(EdgeTypes.upperCorner, Direction.OUTGOING).getEndNode()
+                    .getSingleRelationship(EdgeTypes.value, Direction.OUTGOING).getEndNode()
+                    .getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
+            // TODO Compare classes Envelope and DirectPosition in CityGMl v2 and v3 here
+            double iminx = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
+            double iminy = Double.parseDouble(lowerCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
+            double imaxx = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[0]").toString());
+            double imaxy = Double.parseDouble(upperCorner.getProperty(PropNames.ARRAY_MEMBER + "[1]").toString());
+            return Geometries.rectangle(iminx, iminy, imaxx, imaxy);
+        } catch (NullPointerException e) {
+            return null;
+        }
+    }
+
     public static Node getCollectionMemberNode(Node collectionNode, int memberIndex) {
         try (ResourceIterator<Relationship> it
                      = collectionNode.getRelationships(Direction.OUTGOING, AuxEdgeTypes.COLLECTION_MEMBER).iterator()) {

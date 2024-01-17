@@ -9,6 +9,7 @@ import jgraf.neo4j.factory.EdgeTypes;
 import jgraf.neo4j.factory.PropNames;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GeometryUtils;
+import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.*;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.geometry.euclidean.threed.line.Lines3D;
@@ -206,9 +207,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     .collect(Collectors.toSet())
                     .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
             String leftUuid = leftTLNode.getProperty(AuxPropNames.__UUID__.toString()).toString();
-            Rectangle leftRectangle = (Rectangle) rtrees[leftPartitionIndex].entries()
-                    .filter(entry -> entry.value().getUuid().equals(leftUuid))
-                    .toBlocking().single().geometry();
+            Rectangle leftRectangle = GraphUtils.getBoundingBox(leftTLNode);
             double leftArea = leftRectangle.area();
             double leftWidth = leftRectangle.x2() - leftRectangle.x1();
             double leftHeight = leftRectangle.y2() - leftRectangle.y1();

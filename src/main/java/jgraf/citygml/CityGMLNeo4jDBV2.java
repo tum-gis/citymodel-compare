@@ -99,24 +99,18 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 executorService.execute(() -> {
                     try {
                         CityGML object = chunk.unmarshal();
-
                         partitionPreProcessing(object);
-
-                        Neo4jGraphRef graphRef = executorService.submit(
-                                new CityGMLNeo4jDBMapWorker<Neo4jGraphRef>(this, object,
-                                        AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex)
-                        ).get();
-
+                        Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(object,
+                                AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
                         partitionMapPostProcessing(object, graphRef, partitionIndex, connectToRoot);
-                        logger.debug("Mapped {} top-level features", finalTlCount);
+                        logger.info("Mapped {} top-level features", finalTlCount);
 
                         if (object instanceof CityModel) {
                             if (cityModelRef[0] != null)
                                 throw new RuntimeException("Found multiple CityModel objects in one file");
                             cityModelRef[0] = graphRef;
                         }
-                    } catch (UnmarshalException | MissingADESchemaException | ExecutionException |
-                             InterruptedException e) {
+                    } catch (UnmarshalException | MissingADESchemaException e) {
                         throw new RuntimeException(e);
                     }
                 });

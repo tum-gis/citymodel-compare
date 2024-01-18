@@ -323,13 +323,14 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             double[] tmpLeftBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
                     leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
                     : leftRelNode);
-            RegionBSPTree3D leftRegion = GeometryUtils.toRegion3D(
-                    List.of(tmpLeftBBox[0], tmpLeftBBox[1], tmpLeftBBox[2]),
-                    List.of(tmpLeftBBox[3], tmpLeftBBox[4], tmpLeftBBox[5]),
-                    precision
+            double leftVolume = (tmpLeftBBox[3] - tmpLeftBBox[0])
+                    * (tmpLeftBBox[4] - tmpLeftBBox[1])
+                    * (tmpLeftBBox[5] - tmpLeftBBox[2]);
+            Vector3D leftCentroid = Vector3D.of(
+                    0.5 * (tmpLeftBBox[0] + tmpLeftBBox[3]),
+                    0.5 * (tmpLeftBBox[1] + tmpLeftBBox[4]),
+                    0.5 * (tmpLeftBBox[2] + tmpLeftBBox[5])
             );
-            double leftVolume = leftRegion.getSize();
-            Vector3D leftCentroid = leftRegion.getCentroid();
 
             AtomicReference<Double> maxOverlapRatio = new AtomicReference<>(config.MATCHER_TOLERANCE_SOLIDS);
             AtomicReference<Double> minCentroidTranslation = new AtomicReference<>(config.MATCHER_TRANSLATION_DISTANCE);
@@ -341,17 +342,20 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         double[] tmpRightBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
                                 rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
                                 : rightRelNode);
-                        RegionBSPTree3D rightRegion = GeometryUtils.toRegion3D(
-                                List.of(tmpRightBBox[0], tmpRightBBox[1], tmpRightBBox[2]),
-                                List.of(tmpRightBBox[3], tmpRightBBox[4], tmpRightBBox[5]),
-                                precision
+                        double rightVolume = (tmpRightBBox[3] - tmpRightBBox[0])
+                                * (tmpRightBBox[4] - tmpRightBBox[1])
+                                * (tmpRightBBox[5] - tmpRightBBox[2]);
+                        Vector3D rightCentroid = Vector3D.of(
+                                0.5 * (tmpRightBBox[0] + tmpRightBBox[3]),
+                                0.5 * (tmpRightBBox[1] + tmpRightBBox[4]),
+                                0.5 * (tmpRightBBox[2] + tmpRightBBox[5])
                         );
-                        double rightVolume = rightRegion.getSize();
-                        Vector3D rightCentroid = rightRegion.getCentroid();
 
                         // rightRegion will be altered
-                        rightRegion.intersection(leftRegion);
-                        double overlapSize = rightRegion.getSize();
+                        double overlapX = Math.max(0, Math.min(tmpLeftBBox[3], tmpRightBBox[3]) - Math.max(tmpLeftBBox[0], tmpRightBBox[0]));
+                        double overlapY = Math.max(0, Math.min(tmpLeftBBox[4], tmpRightBBox[4]) - Math.max(tmpLeftBBox[1], tmpRightBBox[1]));
+                        double overlapZ = Math.max(0, Math.min(tmpLeftBBox[5], tmpRightBBox[5]) - Math.max(tmpLeftBBox[2], tmpRightBBox[2]));
+                        double overlapSize = overlapX * overlapY * overlapZ;
                         double overlapRatio = overlapSize / leftVolume;
                         if (overlapRatio > maxOverlapRatio.get()) {
                             maxOverlapRatio.set(overlapRatio);

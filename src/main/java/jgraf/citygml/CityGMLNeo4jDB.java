@@ -393,7 +393,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
                     }
                     TASKS_DONE.getAndIncrement();
-                    long endTime = System.nanoTime();
                     logger.info("MATCHED {}", new DecimalFormat("00.00%").format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
                     tx.commit();
                 } catch (Exception e) {

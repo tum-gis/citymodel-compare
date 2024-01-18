@@ -33,6 +33,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
@@ -393,7 +394,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     }
                     TASKS_DONE.getAndIncrement();
                     long endTime = System.nanoTime();
-                    logger.info("{} % MATCHED", TASKS_DONE.get() * 100. / NR_OF_TASKS);
+                    logger.info("MATCHED {}", new DecimalFormat("00.00%").format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
                     tx.commit();
                 } catch (Exception e) {
                     logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));

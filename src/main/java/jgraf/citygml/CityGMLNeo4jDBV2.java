@@ -428,6 +428,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             );
             Plane leftPlane = boundarySurfacePropertyToPlane(leftBsp, precision);
             if (leftPlane == null) {
+                GraphUtils.markGeomInvalid(leftRelNode);
                 logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", leftRelNode.getElementId());
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
@@ -439,6 +440,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             double minTranslationNorm = config.MATCHER_TRANSLATION_DISTANCE;
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
+                if (!GraphUtils.isGeomValid(rightRelNode)) continue;
                 BoundarySurfaceProperty rightBsp = (BoundarySurfaceProperty) toObject(rightRelNode);
                 double[] tmpRightBBox = GraphUtils.getBoundingBox(
                         rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
@@ -449,6 +451,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 );
                 Plane rightPlane = boundarySurfacePropertyToPlane(rightBsp, precision);
                 if (rightPlane == null) {
+                    GraphUtils.markGeomInvalid(rightRelNode);
                     logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", rightRelNode.getElementId());
                     continue;
                 }
@@ -623,6 +626,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             MultiCurve leftMultiCurve = (MultiCurve) toObject(leftRelNode);
             double[] tmpLeftBbox = multiCurveBBox(leftMultiCurve);
             if (tmpLeftBbox == null) {
+                GraphUtils.markGeomInvalid(leftRelNode);
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             }
@@ -638,6 +642,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             );
             List<Line3D> leftLines = multiCurveToLines3D(leftMultiCurve, precision);
             if (leftLines == null) {
+                GraphUtils.markGeomInvalid(leftRelNode);
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             }
@@ -646,9 +651,11 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             double minTranslationNorm = minTranslation.norm();
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
+                if (!GraphUtils.isGeomValid(rightRelNode)) continue;
                 MultiCurve rightMultiCurve = (MultiCurve) toObject(rightRelNode);
                 double[] tmpRightBbox = multiCurveBBox(rightMultiCurve);
                 if (tmpRightBbox == null) {
+                    GraphUtils.markGeomInvalid(rightRelNode);
                     continue;
                 }
                 Vector3D rightCentroid = Vector3D.of(
@@ -663,6 +670,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 );
                 List<Line3D> rightLines = multiCurveToLines3D(rightMultiCurve, precision);
                 if (rightLines == null) {
+                    GraphUtils.markGeomInvalid(rightRelNode);
                     continue;
                 }
 

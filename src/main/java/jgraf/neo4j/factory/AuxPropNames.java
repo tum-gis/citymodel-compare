@@ -25,7 +25,9 @@ public enum AuxPropNames {
     RELATIONSHIP_NAME,
 
     modCount,
-    size;
+    size,
+
+    GEOM_VALID; // To mark elements as valid or invalid, if invalid -> they can never be matched geoemtrically -> mark as delete
 
     public static boolean isIn(String name) {
         return Arrays.stream(values()).anyMatch(p -> name.startsWith(p.toString()) || name.endsWith(p.toString()));

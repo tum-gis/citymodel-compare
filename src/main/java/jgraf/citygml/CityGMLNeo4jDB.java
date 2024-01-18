@@ -27,6 +27,7 @@ import org.citygml4j.xml.io.reader.FeatureReadMode;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import rx.observables.BlockingObservable;
 
 import java.io.File;
 import java.io.IOException;
@@ -359,6 +360,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         try {
             leftIdList.forEach(leftRelNodeId -> executorService.submit(() -> {
                 try (Transaction tx = graphDb.beginTx()) {
+                    long startTime = System.nanoTime();
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
                     Node leftRelNode = tx.getNodeByElementId(leftRelNodeId);
@@ -387,6 +389,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         diffFound.set(true);
                         new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
                     }
+                    long endTime = System.nanoTime();
+                    logger.info("Transaction commit after {} seconds", (endTime - startTime) / 1e9);
                     tx.commit();
                 } catch (Exception e) {
                     logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));
@@ -621,6 +625,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     .filter(rightRel -> !rightMatchedNodes.contains(rightRel.getEndNode().getElementId()))
                     .filter(rightRel -> skipLabels == null || skipLabels.isEmpty()
                             || skipLabels.stream().noneMatch(l -> rightRel.getEndNode().hasLabel(l)))
+                    .filter(rightRel -> !GraphUtils.isGeomValid(rightRel.getEndNode()))
                     .forEach(rightRel -> {
                         diffFound.set(true);
                         if (set) {

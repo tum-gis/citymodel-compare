@@ -12,8 +12,10 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class GraphUtils {
-    public static void markGeomInvalid(Node geomNode) {
+    public static void markGeomInvalid(Transaction tx, Node geomNode) {
+        Lock lock = tx.acquireWriteLock(geomNode);
         geomNode.setProperty(AuxPropNames.GEOM_VALID.toString(), false);
+        lock.release();
     }
 
     public static boolean isGeomValid(Node geomNode) {

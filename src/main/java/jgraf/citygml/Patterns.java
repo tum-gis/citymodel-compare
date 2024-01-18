@@ -588,7 +588,7 @@ public class Patterns {
                 // Propagate properties from changes to memory
                 if (rel.hasProperty(_RuleRelPropNames.propagate.toString())) {
                     String propagate = rel.getProperty(_RuleRelPropNames.propagate.toString()).toString();
-                    propagate(change, memory, propagate, _MemoryPropNames.property_.toString(), precision);
+                    propagate(tx, change, memory, propagate, _MemoryPropNames.property_.toString(), precision);
                 }
 
                 // Check if all cap values are full
@@ -750,18 +750,20 @@ public class Patterns {
         return null;
     }
 
-    private static void propagate(Node from, Node to, String propagate, String prefix, double precision) { // propagate = "x;y;z" or "*"
+    private static void propagate(Transaction tx, Node from, Node to, String propagate, String prefix, double precision) { // propagate = "x;y;z" or "*"
         String[] keys;
         if (propagate.equals(WILDCARD)) {
             keys = from.getAllProperties().keySet().toArray(new String[0]);
         } else {
             keys = propagate.split(";");
         }
+        Lock lock = tx.acquireWriteLock(to);
         for (String key : keys) {
             if (!to.hasProperty(prefix + key)) {
                 to.setProperty(prefix + key, normalize(from.getProperty(key).toString(), precision));
             }
         }
+        lock.release();
     }
 
     private static boolean checkLocalConditions(Node context, String jsonProperties, String conditions,
@@ -901,8 +903,14 @@ public class Patterns {
 
     public static void markTopSplitChange(Transaction tx, Class<?> changeClass, Node leftNode, List<Node> rightNodes) {
         Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(changeClass.getName()));
+        Lock leftLock = tx.acquireWriteLock(leftNode);
         node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
-        rightNodes.forEach(n -> node.createRelationshipTo(n, AuxEdgeTypes.RIGHT_NODE));
+        leftLock.release();
+        rightNodes.forEach(n -> {
+            Lock rightLock = tx.acquireWriteLock(n);
+            node.createRelationshipTo(n, AuxEdgeTypes.RIGHT_NODE);
+            rightLock.release();
+        });
         node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
     }
 
@@ -911,8 +919,12 @@ public class Patterns {
         if (geoChangeExists(leftNode, rightNode, vector, precision)) return;
 
         Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(changeClass.getName()));
+        Lock leftLock = tx.acquireWriteLock(leftNode);
         node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
+        leftLock.release();
+        Lock rightLock = tx.acquireWriteLock(rightNode);
         node.createRelationshipTo(rightNode, AuxEdgeTypes.RIGHT_NODE);
+        rightLock.release();
         node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
         node.setProperty(_ChangePropNames.x.toString(), vector[0]);
         node.setProperty(_ChangePropNames.y.toString(), vector[1]);

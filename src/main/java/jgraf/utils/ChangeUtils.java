@@ -63,7 +63,9 @@ public class ChangeUtils {
         }
         if (nodes != null) {
             for (Map.Entry<AuxEdgeTypes, Node> entry : nodes.entrySet()) {
+                Lock lock = tx.acquireWriteLock(entry.getValue());
                 changeNode.createRelationshipTo(entry.getValue(), entry.getKey());
+                lock.release();
             }
         }
         logger.debug("Detected {}", changeType.getSimpleName());

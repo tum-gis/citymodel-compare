@@ -215,22 +215,19 @@ public abstract class Neo4jDB implements GraphDB {
         return node;
     }
 
-    public Object toObject(Object graph) {
-        // Only accept type Node
-        if (!(graph instanceof Node graphNode)) return null;
-
+    public Object toObject(Node node) {
         Object object = null;
-        try (Transaction tx = graphDb.beginTx()) { // One transaction per input graph
-            object = toObject(graphNode, tx, new HashMap<>());
-            tx.commit();
-            // logger.info("Reverse-mapped {}", object.getClass().getName());
-        } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+        try {
+            object = toObject(node, new HashMap<>());
+        } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | InstantiationException |
+                 IllegalAccessException | NoSuchFieldException e) {
+            throw new RuntimeException(e);
         }
+        // logger.info("Reverse-mapped {}", object.getClass().getName());
         return object;
     }
 
-    private Object toObject(Node graphNode, Transaction tx, HashMap<String, Object> reverseMapped) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
+    private Object toObject(Node graphNode, HashMap<String, Object> reverseMapped) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
         if (graphNode == null) return null;
 
         // Check if this object has been mapped before, if yes return this mapped node instead of creating a new one
@@ -308,7 +305,7 @@ public abstract class Neo4jDB implements GraphDB {
                     while (it.hasNext()) {
                         Relationship rel = it.next();
                         if (rel.getType().name().equals(AuxPropNames.ARRAY_MEMBER.toString())) {
-                            Object vNode = toObject(rel.getEndNode(), tx, reverseMapped);
+                            Object vNode = toObject(rel.getEndNode(), reverseMapped);
                             if (vNode == null) continue;
                             int index = Integer.parseInt(rel.getProperty(AuxPropNames.ARRAY_INDEX.toString()).toString());
                             Array.set(object, index, componentType.cast(vNode));
@@ -365,7 +362,7 @@ public abstract class Neo4jDB implements GraphDB {
                         // Complex values stored using edges // TODO Multiple edges of same name?
                         Relationship rel = graphNode.getSingleRelationship(
                                 RelationshipType.withName(fieldName), Direction.OUTGOING);
-                        fieldValue = toObject(rel.getEndNode(), tx, reverseMapped);
+                        fieldValue = toObject(rel.getEndNode(), reverseMapped);
                         if (fieldValue == null) continue;
                     }
                     try {

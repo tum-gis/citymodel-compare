@@ -40,6 +40,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -357,10 +358,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         String finalLeftListNodeId = leftListNodeId;
         String finalRightListNodeId = rightListNodeId;
+        final long NR_OF_TASKS = leftIdList.size();
+        AtomicLong TASKS_DONE = new AtomicLong(0);
         try {
             leftIdList.forEach(leftRelNodeId -> executorService.submit(() -> {
                 try (Transaction tx = graphDb.beginTx()) {
-                    long startTime = System.nanoTime();
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
                     Node leftRelNode = tx.getNodeByElementId(leftRelNodeId);
@@ -389,8 +391,9 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         diffFound.set(true);
                         new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
                     }
+                    TASKS_DONE.getAndIncrement();
                     long endTime = System.nanoTime();
-                    logger.info("Transaction commit after {} seconds", (endTime - startTime) / 1e9);
+                    logger.info("{} % MATCHED", TASKS_DONE.get() * 100. / NR_OF_TASKS);
                     tx.commit();
                 } catch (Exception e) {
                     logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));

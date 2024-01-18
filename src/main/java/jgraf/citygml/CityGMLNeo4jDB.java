@@ -372,18 +372,13 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                             null, ((DiffResultGeo) diffResult).getSkip());
                     if (tmpDiffFound) diffFound.set(true);
                 } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
-                    try{
-                        // Multiple top-level candidates split from the old one
-                        List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
-                                .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
-                                        EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
-                        rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
-                        Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
-                        diffFound.set(true);
-                    } catch (Exception e) {
-                        logger.error("THIS");
-                        throw new RuntimeException(e);
-                    }
+                    // Multiple top-level candidates split from the old one
+                    List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
+                            .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
+                                    EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
+                    rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
+                    Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
+                    diffFound.set(true);
                 } else {
                     // Found no match
                     diffFound.set(true);

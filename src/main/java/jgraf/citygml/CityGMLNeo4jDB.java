@@ -13,6 +13,7 @@ import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
 import org.apache.commons.geometry.euclidean.threed.Plane;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
+import org.apache.commons.lang3.function.TriConsumer;
 import org.apache.commons.numbers.core.Precision;
 import org.citygml4j.CityGMLContext;
 import org.citygml4j.builder.jaxb.CityGMLBuilder;
@@ -146,7 +147,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         // Set provides constant time for adds and removes of huge lists
         Set<Neo4jGraphRef> cityModelRefs = Collections.synchronizedSet(new HashSet<>());
         try (Stream<Path> st = Files.walk(path)) {
-            st.filter(Files::isRegularFile).forEach(file -> {
+            st.filter(Files::isRegularFile).parallel().forEach(file -> {
                 // One file one thread
                 executorService.submit((Callable<Void>) () -> {
                     try {
@@ -217,8 +218,10 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     logger.debug("Connected a city model to the database");
                     continue;
                 }
-                GraphUtils.cloneRelationships(cityModelNode, mergedCityModelNode, true);
+                GraphUtils.cloneRelationships(tx, cityModelNode, mergedCityModelNode, true);
+                Lock lockCityModelNode = tx.acquireWriteLock(cityModelNode);
                 cityModelNode.delete();
+                lockCityModelNode.release();
             }
             tx.commit();
         } catch (Exception e) {
@@ -229,49 +232,103 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         logger.info("Finished mapping directory {}", path.toString());
     }
 
-    public void resolveXLinks(BiConsumer<Node, Node> resolveLinkRules,
-                              Consumer<Node> correctLinkRules,
+    public void resolveXLinks(TriConsumer<Transaction, Node, Node> resolveLinkRules,
+                              BiConsumer<Transaction, Node> correctLinkRules,
                               int partitionIndex) {
         logger.info("|--> Resolving XLinks");
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        List<String> nodeIds = Collections.synchronizedList(new ArrayList<>());
+
+        // Store all node IDs in a list first
+        ExecutorService finalExecutorService = executorService;
         mappedClassesSaved.stream()
                 .filter(clazz -> ClazzUtils.isSubclass(clazz, hrefClasses))
-                .forEach(hrefClass -> {
+                .parallel()
+                .forEach(hrefClass -> finalExecutorService.submit((Callable<Void>) () -> {
                     try (Transaction tx = graphDb.beginTx()) {
-                        AtomicInteger transactionCount = new AtomicInteger();
+                        logger.info("Collecting node index {}", hrefClass.getName());
                         tx.findNodes(Label.label(hrefClass.getName())).stream()
                                 .filter(hrefNode -> hrefNode.hasLabel(
                                         Label.label(AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex)))
                                 .filter(hrefNode -> hrefNode.hasProperty(PropNames.href.toString()))
                                 .forEach(hrefNode -> {
-                                    correctLinkRules.accept(hrefNode);
-                                    AtomicInteger idCount = new AtomicInteger();
-                                    String id = hrefNode.getProperty(PropNames.href.toString()).toString()
-                                            .replace("#", "");
-                                    mappedClassesSaved.stream()
-                                            .filter(clazz -> ClazzUtils.isSubclass(clazz, idClasses))
-                                            .forEach(idClass -> tx.findNodes(
-                                                    Label.label(idClass.getName()),
-                                                    PropNames.id.toString(),
-                                                    id
-                                            ).stream().filter(idNode -> idNode.hasLabel(
-                                                    Label.label(AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex))
-                                            ).forEach(idNode -> {
-                                                // Connect linked node to source id node
-                                                resolveLinkRules.accept(idNode, hrefNode);
-                                                idCount.getAndIncrement();
-                                                transactionCount.getAndIncrement();
-                                            }));
-                                    if (idCount.intValue() == 0) {
-                                        logger.warn("No element with referenced ID = {} found", id);
-                                    } else if (idCount.intValue() >= 2) {
-                                        logger.warn("{} elements of the same ID = {} detected", idCount, id);
-                                    }
+                                    nodeIds.add(hrefNode.getElementId());
                                 });
-                        if (transactionCount.get() > 0)
-                            logger.info("Found and resolved {} XLink(s)", transactionCount);
                         tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + " " + Arrays.toString(e.getStackTrace()));
+                    }
+                    return null;
+                }));
+        logger.info("Waiting for all threads to finish");
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+        }
+        logger.info("All threads finished");
+
+        // Batch transactions
+        List<List<String>> batches = new ArrayList<>();
+        int batchSize = config.DB_BATCH_SIZE;
+        for (int i = 0; i < nodeIds.size(); i += batchSize) {
+            batches.add(nodeIds.subList(i, Math.min(i + batchSize, nodeIds.size())));
+        }
+        logger.info("Initiated {} batches for resolving XLinks", batches.size());
+
+        // Resolve XLinks
+        AtomicInteger transactionCount = new AtomicInteger();
+        ExecutorService esBatch = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        batches.parallelStream().forEach(batch -> esBatch.submit((Callable<Void>) () -> {
+            try (Transaction tx = graphDb.beginTx()) {
+                batch.forEach(nodeId -> {
+                    Node hrefNode = tx.getNodeByElementId(nodeId);
+                    correctLinkRules.accept(tx, hrefNode);
+                    AtomicInteger idCount = new AtomicInteger();
+                    String id = hrefNode.getProperty(PropNames.href.toString()).toString()
+                            .replace("#", "");
+                    mappedClassesSaved.stream()
+                            .filter(clazz -> ClazzUtils.isSubclass(clazz, idClasses))
+                            .forEach(idClass -> tx.findNodes(
+                                    Label.label(idClass.getName()),
+                                    PropNames.id.toString(),
+                                    id
+                            ).stream().filter(idNode -> idNode.hasLabel(
+                                    Label.label(AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex))
+                            ).forEach(idNode -> {
+                                // Connect linked node to source id node
+                                resolveLinkRules.accept(tx, idNode, hrefNode);
+                                idCount.getAndIncrement();
+                                transactionCount.getAndIncrement();
+                            }));
+                    if (idCount.intValue() == 0) {
+                        logger.warn("No element with referenced ID = {} found", id);
+                    } else if (idCount.intValue() >= 2) {
+                        logger.warn("{} elements of the same ID = {} detected", idCount, id);
                     }
                 });
+                if (transactionCount.get() > 0)
+                    logger.info("Found and resolved {} XLink(s)", transactionCount);
+                tx.commit();
+            } catch (Exception e) {
+                logger.error(e.getMessage() + " " + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        }));
+        logger.info("Waiting for all threads to finish");
+        esBatch.shutdown();
+        try {
+            if (!esBatch.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
+                esBatch.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            esBatch.shutdownNow();
+        }
+        logger.info("All threads finished");
+
         logger.info("-->| Resolved XLinks");
     }
 
@@ -282,8 +339,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     // Define rules how to link an ID and referenced node (such as href)
-    protected BiConsumer<Node, Node> resolveLinkRules() {
-        return (Node idNode, Node linkedNode) -> {
+    protected TriConsumer<Transaction, Node, Node> resolveLinkRules() {
+        return (Transaction tx, Node idNode, Node linkedNode) -> {
             // (:CityModel) -[:cityObjectMember]-> (:COLLECTION)
             //              -[:COLLECTION_MEMBER]-> (:CityObjectMember.href)
             //              -[:object]-> (:Feature.id)
@@ -294,13 +351,17 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             //              -[:surfaceMember]-> (:COLLECTION)
             //              -[:COLLECTION_MEMBER]-> (:SurfaceProperty)
             //              -[:object]-> (:Polygon)
+            Lock lockLinkedNode = tx.acquireWriteLock(linkedNode);
+            Lock lockIdNode = tx.acquireWriteLock(idNode);
             linkedNode.createRelationshipTo(idNode, EdgeTypes.object);
             linkedNode.removeProperty(PropNames.href.toString());
+            lockLinkedNode.release();
+            lockIdNode.release();
         };
     }
 
-    protected Consumer<Node> correctLinkRules() {
-        return (Node node) -> {
+    protected BiConsumer<Transaction, Node> correctLinkRules() {
+        return (Transaction tx, Node node) -> {
             // Correct hrefs without prefix "#"
             Object propertyHref = node.getProperty(PropNames.href.toString());
             if (propertyHref == null) return;
@@ -311,7 +372,9 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             if (valueHref.charAt(0) != '#') {
                 logger.warn("Added prefix \"#\" to incomplete href = {}", valueHref);
+                Lock lock = tx.acquireWriteLock(node);
                 node.setProperty(PropNames.href.toString(), "#" + valueHref);
+                lock.release();
             }
 
             // More corrections when needed...
@@ -362,7 +425,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         final long NR_OF_TASKS = leftIdList.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
         try {
-            leftIdList.forEach(leftRelNodeId -> executorService.submit(() -> {
+            leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit(() -> {
                 try (Transaction tx = graphDb.beginTx()) {
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
@@ -418,20 +481,48 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         // Remaining multi-relationships in right
         if (!rightIdList.isEmpty()) {
             diffFound.set(true);
-            try (Transaction tx = graphDb.beginTx()) {
-                Node leftListNode = tx.getNodeByElementId(leftListNodeId);
-                Node rightListNode = tx.getNodeByElementId(rightListNodeId);
-                rightIdList.forEach(rightRelNodeId -> {
-                    Node rightRelNode = tx.getNodeByElementId(rightRelNodeId);
-                    Relationship rightRel = rightRelNode.getRelationships(Direction.INCOMING).stream()
-                            .filter(r -> r.getStartNode().equals(rightListNode))
-                            .collect(Collectors.toSet()).iterator().next();
-                    new InsertNodeChange(tx, leftListNode, rightListNode, rightRel);
-                });
-                tx.commit();
-            } catch (Exception e) {
-                logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
+
+            // Batch transactions
+            List<List<String>> batches = new ArrayList<>();
+            int batchSize = config.DB_BATCH_SIZE;
+            for (int i = 0; i < rightIdList.size(); i += batchSize) {
+                batches.add(rightIdList.subList(i, Math.min(i + batchSize, rightIdList.size())));
             }
+            logger.info("Initiated {} batches for remaining multi-relationships in right", batches.size());
+
+            ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            String finalLeftListNodeId1 = leftListNodeId;
+            String finalRightListNodeId1 = rightListNodeId;
+            batches.parallelStream().forEach(batch -> es.submit(() -> {
+                try (Transaction tx = graphDb.beginTx()) {
+                    Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId1);
+                    Node rightListNode = tx.getNodeByElementId(finalRightListNodeId1);
+                    batch.forEach(rightRelNodeId -> {
+                        try {
+                            Node rightRelNode = tx.getNodeByElementId(rightRelNodeId);
+                            Relationship rightRel = rightRelNode.getRelationships(Direction.INCOMING).stream()
+                                    .filter(r -> r.getStartNode().equals(rightListNode))
+                                    .collect(Collectors.toSet()).iterator().next();
+                            new InsertNodeChange(tx, leftListNode, rightListNode, rightRel);
+                        } catch (Exception e) {
+                            logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
+                        }
+                    });
+                    tx.commit();
+                } catch (Exception e) {
+                    logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
+                }
+            }));
+            logger.info("Waiting for all threads to finish");
+            es.shutdown();
+            try {
+                if (!es.awaitTermination(config.MATCHER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
+                    es.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                es.shutdownNow();
+            }
+            logger.info("All threads finished");
         }
 
         dbStats.stopTimer("Match city models indexed at " + leftPartitionIndex + " and " + rightPartitionIndex);

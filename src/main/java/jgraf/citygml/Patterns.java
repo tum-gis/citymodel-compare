@@ -205,19 +205,21 @@ public class Patterns {
 
         // Phase 1: Multi-threaded processing of sub-elements of top-level features
         logger.info("Phase 1: Interpreting changes of sub-elements of top-level features");
-        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        toplevelIds.forEach(toplevelId -> executorService.submit(()
+        ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        toplevelIds.forEach(toplevelId -> esTop.submit(()
                 -> processPhase1(graphDb, toplevelId, toplevelIds.size(), rtree, jsFnString, engine, precision)));
 
         // Wait for all threads to finish
-        executorService.shutdown();
+        logger.info("Waiting for all threads to finish");
+        esTop.shutdown();
         try {
-            if (!executorService.awaitTermination(timeout, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
+            if (!esTop.awaitTermination(timeout, TimeUnit.SECONDS)) {
+                esTop.shutdownNow();
             }
         } catch (InterruptedException e) {
-            executorService.shutdownNow();
+            esTop.shutdownNow();
         }
+        logger.info("All threads finished");
 
         // Phase 2: Single-threaded aggregation of top-level features (including calculating scope)
         logger.info("Phase 2: Interpreting changes over top-level features");
@@ -362,7 +364,11 @@ public class Patterns {
                         .filter(c -> getScope(c, scopeTypes, precision) == null) // Skip if this other change has been scoped
                         .forEach(c -> {
                             // Connect to scope node
+                            Lock lockStart = tx.acquireWriteLock(c);
+                            Lock lockEnd = tx.acquireWriteLock(finalScope);
                             c.createRelationshipTo(finalScope, _RuleRelTypes.SCOPED_TO);
+                            lockStart.release();
+                            lockEnd.release();
 
                             // Retrieve building node
                             Node toplevel = c.getSingleRelationship(AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
@@ -397,6 +403,7 @@ public class Patterns {
                 int countInSpatial = rtree.search(bbox).count().toBlocking().single();
 
                 // Store information in the scope node after ALL changes of this change type have been processed
+                Lock lockScope = tx.acquireWriteLock(scope);
                 scope.setProperty(_ScopePropNames.change_type.toString(), changeType);
                 scope.setProperty(_ScopePropNames.constraints.toString(), calcScope);
                 scope.setProperty(_ScopePropNames.scope.toString(), count.get() == toplevelSize
@@ -416,6 +423,7 @@ public class Patterns {
                 for (String type : scopeTypes) {
                     scope.setProperty(type, change.getProperty(type).toString());
                 }
+                lockScope.release();
                 // If the scope node has already been created -> all changes have been scoped (incl. this one) -> skip
             }
 
@@ -479,6 +487,8 @@ public class Patterns {
                     // Create next change WITHOUT MEMORY NODE (which is only needed for non-top-level features)
                     Node nextChange = tx.createNode(Label.label(Change.class.getName()));
 
+                    Lock lockNextChange = tx.acquireWriteLock(nextChange);
+
                     // Change type
                     nextChange.setProperty(_ChangePropNames.change_type.toString(), nextChangeType);
 
@@ -499,6 +509,8 @@ public class Patterns {
 
                     // Connect scope node to this next change
                     scope.createRelationshipTo(nextChange, _RuleRelTypes.AGGREGATED_TO);
+
+                    lockNextChange.release();
 
                     // Add this next change to the queue
                     queue.add(nextChange);
@@ -521,6 +533,8 @@ public class Patterns {
                     // Init memory node
                     memory = tx.createNode(_MemoryNodeLabels.MEMORY);
 
+                    Lock lockMemory = tx.acquireWriteLock(memory);
+
                     // Next change type (exactly one)
                     memory.setProperty(_MemoryPropNames.next_change_type.toString(), nextChangeType);
 
@@ -537,6 +551,8 @@ public class Patterns {
 
                     // Connect memory to next content node
                     memory.createRelationshipTo(nextContent, _RuleRelTypes.SAVED_FOR);
+
+                    lockMemory.release();
                 } else {
                     // Fetch memory node for this next rule node
                     memory = memoryRels.get(0).getStartNode();
@@ -546,6 +562,7 @@ public class Patterns {
                         + rule.getProperty(_RuleNodePropNames.change_type.toString()).toString();
                 if (!memory.hasProperty(capKey)) {
                     if (rel.hasProperty(_RuleRelPropNames.weight.toString())) {
+                        Lock lockMemory = tx.acquireWriteLock(memory);
                         if (rel.getProperty(_RuleRelPropNames.weight.toString()).toString().equals(WILDCARD)) {
                             // "*" -> Automatically calculate cap value by counting descendants
                             memory.setProperty(capKey, countDescendants(tx, nextContent,
@@ -554,6 +571,7 @@ public class Patterns {
                             memory.setProperty(capKey, Integer.parseInt(
                                     rel.getProperty(_RuleRelPropNames.weight.toString()).toString()));
                         }
+                        lockMemory.release();
                     }
                 }
 
@@ -574,15 +592,21 @@ public class Patterns {
                     // Count values
                     String countKey = _MemoryPropNames.count_value_
                             + rule.getProperty(_RuleNodePropNames.change_type.toString()).toString();
+                    Lock lockMemory = tx.acquireWriteLock(memory);
                     if (memory.hasProperty(countKey)) {
                         int value = Integer.parseInt(memory.getProperty(countKey).toString());
                         memory.setProperty(countKey, value + 1);
                     } else {
                         memory.setProperty(countKey, 1);
                     }
+                    lockMemory.release();
 
                     // Connect change to the memory (for later redirection to next change)
+                    Lock lockChange = tx.acquireWriteLock(change);
+                    Lock lockMemory2 = tx.acquireWriteLock(memory);
                     change.createRelationshipTo(memory, _RuleRelTypes.AUX);
+                    lockMemory2.release();
+                    lockChange.release();
                 }
 
                 // Propagate properties from changes to memory
@@ -637,7 +661,9 @@ public class Patterns {
                                 .getProperty(_RuleRelPropNames.name.toString()).toString();
                         if (!memory.hasProperty(_MemoryPropNames.name_ + t)) {
                             // If there are multiple change instances for this change type -> use the first one
+                            Lock lockMemory = tx.acquireWriteLock(memory);
                             memory.setProperty(_MemoryPropNames.name_ + t, name);
+                            lockMemory.release();
                         }
 
                         // Copy all properties from a previous change to json.<name>
@@ -683,6 +709,8 @@ public class Patterns {
                 // All conditions for the next change node are satisfied
                 Node nextChange = tx.createNode(Label.label(Change.class.getName()));
 
+                Lock lockNextChange = tx.acquireWriteLock(nextChange);
+
                 // Change type
                 nextChange.setProperty(_ChangePropNames.change_type.toString(), nextChangeType);
 
@@ -701,16 +729,24 @@ public class Patterns {
                 }
 
                 // Connect change to next content node
+                Lock lockNextContent = tx.acquireWriteLock(nextContent);
                 nextChange.createRelationshipTo(nextContent, AuxEdgeTypes.TANDEM);
+                lockNextContent.release();
 
                 // Connect all previous changes to this next change
+                Lock lockMemory = tx.acquireWriteLock(memory);
                 memory.getRelationships(Direction.INCOMING, _RuleRelTypes.AUX).forEach(r -> {
                     r.getStartNode().createRelationshipTo(nextChange, _RuleRelTypes.AGGREGATED_TO);
+                    Lock lockR = tx.acquireWriteLock(r);
                     r.delete();
+                    lockR.release();
                 });
                 // Do not delete memory now, because another may be created again for the same content node
                 // --> Mark memory later for clean up
                 memory.setProperty(_MemoryPropNames.done.toString(), true);
+                lockMemory.release();
+
+                lockNextChange.release();
 
                 // Add this next change to the queue
                 queue.add(nextChange);

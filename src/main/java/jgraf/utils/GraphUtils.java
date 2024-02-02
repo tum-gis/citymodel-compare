@@ -82,14 +82,14 @@ public class GraphUtils {
         }
 
         // Relationships
-        cloneRelationships(node, clone, delete);
+        cloneRelationships(tx, node, clone, delete);
 
         if (delete) node.delete();
 
         return clone;
     }
 
-    public static void cloneRelationships(Node source, Node clone, boolean delete) {
+    public static void cloneRelationships(Transaction tx, Node source, Node clone, boolean delete) {
         for (Relationship rel : source.getRelationships()) {
             Relationship cloneRel = null;
             boolean mergingArray = false;
@@ -99,51 +99,83 @@ public class GraphUtils {
                     // (a)-[]->(ChildList)-[elementData]->(__ARRAY__ )->[ARRAY_MEMBER]->(b)
                     //         modCount,Size              ARRAY_SIZE
                     if (!clone.hasRelationship(Direction.OUTGOING, rel.getType())) {
+                        Lock lockClone = tx.acquireWriteLock(clone);
+                        Lock lockRel = tx.acquireWriteLock(rel);
                         cloneRel = clone.createRelationshipTo(rel.getEndNode(), rel.getType());
+                        lockRel.release();
+                        lockClone.release();
                     } else if (rel.getEndNode().hasLabel(Label.label(ChildList.class.getName()))) { // TODO ChildList is in CityGML 2.0
                         mergingArray = true;
                         Node sourceChildList = rel.getEndNode();
                         Node sourceArray = sourceChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
                         Node cloneChildList = clone.getSingleRelationship(rel.getType(), Direction.OUTGOING).getEndNode();
                         Node cloneArray = cloneChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode();
+                        Lock lockCloneArray = tx.acquireWriteLock(cloneArray);
                         AtomicInteger count = new AtomicInteger();
                         sourceArray.getRelationships(Direction.OUTGOING, AuxEdgeTypes.ARRAY_MEMBER).forEach(r -> {
                             cloneArray.createRelationshipTo(r.getEndNode(), r.getType());
+                            Lock lockR = tx.acquireWriteLock(r);
                             if (delete) r.delete();
+                            lockR.release();
                             count.getAndIncrement();
                         });
                         cloneArray.setProperty(AuxPropNames.ARRAY_SIZE.toString(),
                                 Integer.parseInt(cloneArray.getProperty(AuxPropNames.ARRAY_SIZE.toString()).toString())
                                         + count.get());
+                        Lock lockCloneChildList = tx.acquireWriteLock(cloneChildList);
                         cloneChildList.setProperty(AuxPropNames.modCount.toString(),
                                 Integer.parseInt(cloneChildList.getProperty(AuxPropNames.modCount.toString()).toString())
                                         + count.get());
                         cloneChildList.setProperty(AuxPropNames.size.toString(),
                                 Integer.parseInt(cloneChildList.getProperty(AuxPropNames.size.toString()).toString())
                                         + count.get());
+                        lockCloneChildList.release();
+                        lockCloneArray.release();
                         if (delete) {
+                            Lock lockSourceChildList = tx.acquireWriteLock(sourceChildList);
                             sourceChildList.getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).delete();
+
+                            Lock lockSourceArray = tx.acquireWriteLock(sourceArray);
                             sourceArray.delete();
+                            lockSourceArray.release();
+
+                            Lock lockRel = tx.acquireWriteLock(rel);
                             rel.delete();
+                            lockRel.release();
+
                             sourceChildList.delete();
+                            lockSourceChildList.release();
                         }
                     }
                 } else {
+                    Lock lockClone = tx.acquireWriteLock(clone);
+                    Lock lockRel = tx.acquireWriteLock(rel.getEndNode());
                     cloneRel = clone.createRelationshipTo(rel.getEndNode(), rel.getType());
+                    lockRel.release();
+                    lockClone.release();
                 }
             } else {
                 // node is an end node
+                Lock lockStartNode = tx.acquireWriteLock(rel.getStartNode());
+                Lock lockClone = tx.acquireWriteLock(clone);
                 cloneRel = rel.getStartNode().createRelationshipTo(clone, rel.getType());
+                lockClone.release();
+                lockStartNode.release();
             }
 
             if (!mergingArray) {
+                Lock lockCloneRel = tx.acquireWriteLock(cloneRel);
                 for (Map.Entry<String, Object> entry : rel.getAllProperties().entrySet()) {
                     cloneRel.setProperty(entry.getKey(), entry.getValue());
                 }
+                lockCloneRel.release();
 
-                if (delete) rel.delete();
+                if (delete) {
+                    Lock lockRel = tx.acquireWriteLock(rel);
+                    rel.delete();
+                    lockRel.release();
+                }
             }
-
         }
     }
 

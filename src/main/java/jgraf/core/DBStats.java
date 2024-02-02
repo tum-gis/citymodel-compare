@@ -57,9 +57,9 @@ public class DBStats {
 
     @Override
     public String toString() {
-        String horizontalBorder = new String(new char[85]).replace("\0", "-");
+        String horizontalBorder = new String(new char[97]).replace("\0", "-");
         StringBuilder result = new StringBuilder("\n+ " + horizontalBorder + " +\n");
-        String stringFormat = "| %-58s : %,10d : %10.3f%% |\n";
+        String stringFormat = "| %-70s : %,10d : %10.3f%% |\n";
 
         // Sort mapped label hash map
         result.append(String.format(stringFormat, "TOTAL NUMBER OF MAPPED NODES", mappedNodeCount, 100f));

@@ -206,7 +206,7 @@ public class Patterns {
         // Phase 1: Multi-threaded processing of sub-elements of top-level features
         logger.info("Phase 1: Interpreting changes of sub-elements of top-level features");
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        toplevelIds.forEach(toplevelId -> esTop.submit(()
+        toplevelIds.parallelStream().forEach(toplevelId -> esTop.submit(()
                 -> processPhase1(graphDb, toplevelId, toplevelIds.size(), rtree, jsFnString, engine, precision)));
 
         // Wait for all threads to finish
@@ -260,12 +260,11 @@ public class Patterns {
 
             // Init a FIFO queue for processing and interpreting changes
             Queue<Node> queue = new LinkedList<>();
-            traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM).forEach(rel -> {
-                queue.add(rel.getStartNode());
-            }));
+            traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM)
+                    .forEach(rel -> queue.add(rel.getStartNode())));
 
             // Can be reused in both phase 1 and 2
-            logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
+            logger.info("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
             processCore(graphDb, tx, queue, toplevelSize, rtree, jsFnString, engine, precision);
 
             tx.commit();
@@ -342,6 +341,11 @@ public class Patterns {
             // Calculate scope (only top-level features can have a scope)
             // This must be done before evaluating conditions, because the scope node is needed for rule edges
             if (rule.hasProperty(_RuleNodePropNames.calc_scope.toString())) {
+                if (!content.hasLabel(Label.label(Building.class.getName()))) {
+                    // TODO Extend for CityGML v3, and all other top-level features
+                    logger.warn("Invoked scope calculation not for top-level feature, skipping...");
+                    continue;
+                }
                 String calcScope = rule.getProperty(_RuleNodePropNames.calc_scope.toString()).toString();
                 Set<String> scopeTypes = new HashSet<>();
                 for (String s : calcScope.split(";")) {
@@ -477,6 +481,11 @@ public class Patterns {
 
                 // Evaluate scope (only for top-level features)
                 if (rel.hasProperty(_RuleRelPropNames.scope.toString())) {
+                    if (!content.hasLabel(Label.label(Building.class.getName()))) {
+                        // TODO Extend for CityGML v3, and all other top-level features
+                        logger.warn("Invoked scope calculation not for top-level feature, skipping...");
+                        return;
+                    }
                     Node scope = getScope(rule, change, changeType, precision);
 
                     // Check if the found scope node satisfies the scope condition (global/clustered)
@@ -550,7 +559,9 @@ public class Patterns {
                     }
 
                     // Connect memory to next content node
+                    Lock lockNextContent = tx.acquireWriteLock(nextContent);
                     memory.createRelationshipTo(nextContent, _RuleRelTypes.SAVED_FOR);
+                    lockNextContent.release();
 
                     lockMemory.release();
                 } else {
@@ -734,22 +745,29 @@ public class Patterns {
                 lockNextContent.release();
 
                 // Connect all previous changes to this next change
-                Lock lockMemory = tx.acquireWriteLock(memory);
                 memory.getRelationships(Direction.INCOMING, _RuleRelTypes.AUX).forEach(r -> {
+                    Lock lockRStart = tx.acquireWriteLock(r.getStartNode());
                     r.getStartNode().createRelationshipTo(nextChange, _RuleRelTypes.AGGREGATED_TO);
+                    lockRStart.release();
                     Lock lockR = tx.acquireWriteLock(r);
                     r.delete();
                     lockR.release();
                 });
                 // Do not delete memory now, because another may be created again for the same content node
                 // --> Mark memory later for clean up
+                Lock lockMemory = tx.acquireWriteLock(memory);
                 memory.setProperty(_MemoryPropNames.done.toString(), true);
                 lockMemory.release();
 
                 lockNextChange.release();
 
                 // Add this next change to the queue
-                queue.add(nextChange);
+                // Only if the next content node is NOT a top-level feature
+                // --> Top-level features are processed in phase 2
+                if (!nextContent.hasLabel(Label.label(Building.class.getName()))) {
+                    // TODO Extend for CityGML v3, and all other top-level features
+                    queue.add(nextChange);
+                }
             });
         }
     }

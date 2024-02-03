@@ -744,6 +744,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 graphDb,
                 ((CityGMLNeo4jDBConfig) config).INTERPRETATION_FUNCTIONS_PATH,
                 rtrees[0], // old city model
+                config.DB_BATCH_SIZE,
                 config.MATCHER_TOLERANCE_LENGTHS,
                 config.MATCHER_CONCURRENT_TIMEOUT
         );

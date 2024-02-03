@@ -28,6 +28,7 @@ import javax.script.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -167,6 +168,7 @@ public class Patterns {
             GraphDatabaseService graphDb,
             String jsFile,
             RTree<Neo4jGraphRef, Geometry> rtree,
+            int batchSize,
             double precision,
             int timeout
     ) {
@@ -206,8 +208,12 @@ public class Patterns {
         // Phase 1: Multi-threaded processing of sub-elements of top-level features
         logger.info("Phase 1: Interpreting changes of sub-elements of top-level features");
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        toplevelIds.parallelStream().forEach(toplevelId -> esTop.submit(()
-                -> processPhase1(graphDb, toplevelId, toplevelIds.size(), rtree, jsFnString, engine, precision)));
+        AtomicInteger counter = new AtomicInteger();
+        toplevelIds.parallelStream().forEach(toplevelId -> {
+            int currentCount = counter.getAndIncrement();
+            esTop.submit(()
+                    -> processPhase1(graphDb, toplevelId, currentCount, toplevelIds.size(), rtree, jsFnString, engine, precision));
+        });
 
         // Wait for all threads to finish
         logger.info("Waiting for all threads to finish");
@@ -223,7 +229,7 @@ public class Patterns {
 
         // Phase 2: Single-threaded aggregation of top-level features (including calculating scope)
         logger.info("Phase 2: Interpreting changes over top-level features");
-        processPhase2(graphDb, toplevelIds, rtree, jsFnString, engine, precision);
+        processPhase2(graphDb, toplevelIds, rtree, jsFnString, engine, batchSize, precision);
 
         // Post-processing
         long nrCleaned = cleanUsedMemory(graphDb);
@@ -235,6 +241,7 @@ public class Patterns {
     private static void processPhase1(
             GraphDatabaseService graphDb,
             String toplevelId,
+            int currentCount,
             int toplevelSize,
             RTree<Neo4jGraphRef, Geometry> rtree,
             String jsFnString,
@@ -264,9 +271,11 @@ public class Patterns {
                     .forEach(rel -> queue.add(rel.getStartNode())));
 
             // Can be reused in both phase 1 and 2
-            logger.info("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
+            logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
             processCore(graphDb, tx, queue, toplevelSize, rtree, jsFnString, engine, precision);
 
+            logger.info("INTERPRETED (Phase 1) {} of {} top-level features",
+                    new DecimalFormat("00.00%").format(currentCount * 1. / toplevelSize), toplevelSize);
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
@@ -279,26 +288,61 @@ public class Patterns {
             RTree<Neo4jGraphRef, Geometry> rtree,
             String jsFnString,
             ScriptEngine engine,
+            int batchSize,
             double precision
     ) {
+        Queue<String> nodeIds = new LinkedList<>();
         try (Transaction tx = graphDb.beginTx()) {
-            // Init a FIFO queue for processing and interpreting changes
-            Queue<Node> queue = new LinkedList<>();
             toplevelIds.forEach(id -> {
                 Node toplevel = tx.getNodeByElementId(id);
                 toplevel.getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM).forEach(rel -> {
                     Node change = rel.getStartNode();
-                    queue.add(change);
+                    nodeIds.add(change.getElementId());
                 });
             });
-
-            // Can be reused in both phase 1 and 2
-            logger.debug("Found {} changes across all top-level features", queue.size());
-            processCore(graphDb, tx, queue, toplevelIds.size(), rtree, jsFnString, engine, precision);
 
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+        }
+
+        // Batch processing
+        long count = 0;
+        final long totalSize = nodeIds.size();
+        Queue<String> batch = new LinkedList<>();
+        while (!nodeIds.isEmpty()) {
+            batch.add(nodeIds.poll());
+            if (batch.size() == batchSize || nodeIds.isEmpty()) {
+                try (Transaction tx = graphDb.beginTx()) {
+                    // Init a FIFO queue for processing and interpreting changes
+                    Queue<Node> queue = new LinkedList<>();
+                    while (!batch.isEmpty()) {
+                        String id = batch.poll();
+                        Node change = tx.getNodeByElementId(id);
+                        queue.add(change);
+                    }
+
+                    // Can be reused in both phase 1 and 2
+                    logger.debug("Found {} changes across all top-level features", queue.size());
+                    int countBefore = queue.size();
+                    processCore(graphDb, tx, queue, toplevelIds.size(), rtree, jsFnString, engine, precision);
+                    int countAfter = queue.size();
+                    count += countBefore - countAfter;
+
+                    logger.info("INTERPRETED (Phase 2) {} of {} top-level changes",
+                            new DecimalFormat("00.00%").format(count * 1. / totalSize), totalSize);
+
+                    // Propagate remaining queue elements to next batch
+                    while (!queue.isEmpty()) {
+                        Node change = queue.poll();
+                        batch.add(change.getElementId());
+                    }
+
+                    tx.commit();
+                } catch (Exception e) {
+                    logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                }
+            }
         }
     }
 

@@ -82,7 +82,7 @@ configurations.all {
 run {
     mainClass = 'jgraf.app.CityAnalysisApp'
     applicationDefaultJvmArgs = [
-            '-Xms16g', '-Xmx48g',
+            '-Xms16g', '-Xmx50g',
             '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
@@ -103,7 +103,7 @@ tasks.named('test') {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
     minHeapSize = '16g'
-    maxHeapSize = '48g'
+    maxHeapSize = '50g'
     jvmArgs = [
             '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',

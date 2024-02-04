@@ -1,28 +1,3 @@
-// ---------------------------------------------------------------------------------------------------------------------
-// TODO Document this
-
-// next_content_type
-// The type of the next content node
-
-// search_length
-// Maximum search path length while traversing to the next content node.
-
-// not_contains
-// While searching for the next content type, do NOT traverse paths containing the given content type.
-
-// conditions
-// Conditions that must ALL be fulfilled, e.g., 'PROPERTY_NAME=id;RIGHT_PROPERTY_VALUE=$value'
-// Can use variables such as $value. Variables are shared and matched among all converging edges.
-// Can use the wildcard * to represent a fixed value FOR ALL objects, e.g., 'RIGHT_PROPERTY_VALUE=*'.
-// In this case, the weight must be 1 or *.
-// Variables and wildcards can be combined, e.g., 'RIGHT_PROPERTY_VALUE=$value;RIGHT_PROPERTY_VALUE=*'.
-
-// weight
-// The number of occurrences of the current change required to activate the next rule.
-// Can be a number or the wildcard *, which means that ALL occurrences of current change are required.
-// The weight 0 can be used as a NOT EXIST condition.
-// ---------------------------------------------------------------------------------------------------------------------
-
 // TODO Define a graph database schema for this structure?
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -31,28 +6,24 @@ CALL{
 
 // Rules for updated building IDs
 MERGE (updated_prop:RULE {
-  change_type: 'UpdatePropChange' // TODO These classes are from the implementation for changes
-// TODO No need for tags here, as it is the literal change node
+  change_type: 'UpdatePropChange'
+// TODO No need for tags here, as it is a lowest-level change node
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.building.Building',
-  search_length:     1,
+  search_length:     0,
   conditions:        'PROPERTY_NAME === "id"', // TODO Use the same syntax as in JavaScript, e.g., '(value1 == 1 || value2 == 2) && value3 == 3'
   propagate:         'PROPERTY_NAME',
   weight:            1
 }]->(updated_building_id:RULE {
   change_type: 'UpdatedBuildingId',
-  calc_scope:  'PROPERTY_NAME', // TODO Post calculation of scope
+  calc_scope:  '*', // TODO Wildcard means scope based on existence and not by exact matching (such as for changed IDs)
   tags:        'update;thematic;toplevel'
-// TODO Scope is a special memory node. Memory node is updated every time, while scope is only updated when all previous aggregations are done.
-// TODO Scope will automatically calculate and select the best spatial bounding shape (bbox, convex hull, circle, buffered zone, etc.)
-// TODO Will calculate and store the bounding shape, as well as type_coverage, bounding_coverage, type_in_bounding_coverage -> these are used to determine the best bounding shape
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
   scope:             'global'
-// TODO Save all properties and their values available in the current memory node in script engine (such as PROPERTY_NAMe and SCOPE) -> then eval
+// TODO Save all properties and their values available in the current memory node in script engine (such as PROPERTY_NAME and SCOPE) -> then eval
 // TODO weight no longer needed when processing scope
 }]->(global_updated_building_ids:RULE {
-// TODO Remove epoch in implementation since FIRST LAST are no longer used
   change_type: 'GlobalUpdatedBuildingIds',
   tags:        'update;thematic;toplevel;scope'
 })
@@ -65,18 +36,20 @@ MERGE (updated_prop:RULE {
 //  tags:        'update;thematic;toplevel;scope'
 //})
 
-// TODO bbox and circle are typically a result of a database modification action, while more complex shapes such as buffered zones are a result of changes in the real world (such as changes along a street, in a district)
+// TODO bbox and circle are typically a result of a database modification action,
+// while more complex shapes such as buffered zones are a result of changes in the real world
+// (such as changes along a street, in a district)
 
 // Rules for updated building creation dates
 MERGE (updated_prop)-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.building.Building',
-  search_length:     1,
+  search_length:     0,
   conditions:        'PROPERTY_NAME === "creationDate"',
   propagate:         'RIGHT_PROPERTY_VALUE',
   weight:            1
 }]->(updated_building_creation_date:RULE {
   change_type: 'UpdatedBuildingCreationDate',
-  calc_scope:  'RIGHT_PROPERTY_VALUE',
+  calc_scope:  'RIGHT_PROPERTY_VALUE', // TODO The value RIGHT_PROPERTY_VALUE must be the same for all changes
   tags:        'update;thematic;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
@@ -133,12 +106,11 @@ MERGE (updated_prop)-[:AGGREGATED_TO {
   weight:            1
 }]->(updated_building_measured_height:RULE {
   change_type: 'UpdatedBuildingMeasuredHeight',
-  calc_scope:  'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE',
+  calc_scope:  '*',
   tags:        'update;thematic;measurement;vertical;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE'
+  scope:             'global'
 }]->(global_updated_building_measured_heights:RULE {
   change_type: 'GlobalUpdatedBuildingMeasuredHeights',
   tags:        'update;thematic;measurement;vertical;toplevel;scope'
@@ -457,12 +429,11 @@ MERGE (size_changed_roof)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_roofs_with_bparts:RULE {
   change_type: 'SizeChangedBuildingRoofs_WithBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;roof;bpart;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_building_roofs_with_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingRoofs_WithBParts',
   tags:        'size;geometric;surface;roof;bpart;toplevel;scope'
@@ -490,12 +461,11 @@ MERGE (size_changed_wall)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_walls_with_bparts:RULE {
   change_type: 'SizeChangedBuildingWalls_WithBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;wall;bpart;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_building_walls_with_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingWalls_WithBParts',
   tags:        'size;geometric;surface;wall;bpart;toplevel;scope'
@@ -523,12 +493,11 @@ MERGE (size_changed_ground)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_grounds_with_bparts:RULE {
   change_type: 'SizeChangedBuildingGrounds_WithBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;ground;bpart;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_building_grounds_with_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingGrounds_WithBParts',
   tags:        'size;geometric;surface;ground;bpart;toplevel;scope'
@@ -550,12 +519,11 @@ MERGE (size_changed_roof)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_roofs_no_bparts:RULE {
   change_type: 'SizeChangedBuildingRoofs_NoBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;roof;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_buildings_roofs_no_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingRoofs_NoBParts',
   tags:        'size;geometric;surface;roof;toplevel;scope'
@@ -577,12 +545,11 @@ MERGE (size_changed_wall)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_walls_no_bparts:RULE {
   change_type: 'SizeChangedBuildingWalls_NoBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;wall;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_buildings_walls_no_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingWalls_NoBParts',
   tags:        'size;geometric;surface;wall;toplevel;scope'
@@ -604,12 +571,11 @@ MERGE (size_changed_ground)-[:AGGREGATED_TO {
   weight:            '*'
 }]->(size_changed_building_grounds_no_bparts:RULE {
   change_type: 'SizeChangedBuildingGrounds_NoBParts',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'size;geometric;surface;ground;toplevel'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'x;y;z'
+  scope:             'global'
 }]->(global_size_changed_building_grounds_no_bparts:RULE {
   change_type: 'GlobalSizeChangedBuildingGrounds_NoBParts',
   tags:        'size;geometric;surface;ground;toplevel;scope'
@@ -635,7 +601,7 @@ MERGE (updated_building_measured_height)-[:AGGREGATED_TO {
 }]->(raised_building_roofs:RULE {
   change_type: 'RaisedBuildingRoofs',
   join:        'fuzzyEquals(parseFloat(rule_measured_height.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))',
-  calc_scope:  'x;y;z',
+  calc_scope:  '*',
   tags:        'update;thematic;measurement;geometric;vertical;toplevel'
 })
 MERGE (translated_building_roofs_no_bparts)-[:AGGREGATED_TO {
@@ -660,8 +626,7 @@ MERGE (size_changed_building_walls_no_bparts)-[:AGGREGATED_TO {
   weight:            '1'
 }]->(raised_building_roofs)-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  scope:             'global',
-  propagate:         'z'
+  scope:             'global'
 }]->(global_raised_building_roofs:RULE {
   change_type: 'GlobalRaisedBuildingRoofs',
   tags:        'update;thematic;measurement;geometric;vertical;toplevel;scope'

@@ -323,46 +323,65 @@ public class Patterns {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
         }
 
-        // Multi-threading
-        ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
         // Batch processing
         AtomicLong count = new AtomicLong();
         final long totalSize = topLvlChangeNodeIds.size();
         while (!topLvlChangeNodeIds.isEmpty()) {
-            es.submit((Callable<Void>) () -> {
+            // Init a batch FIFO queue for processing and interpreting changes
+            Queue<String> batchIds = new LinkedList<>();
+            for (int i = 0; i < batchSize && !topLvlChangeNodeIds.isEmpty(); i++) {
+                String id = topLvlChangeNodeIds.poll();
+                if (id == null) break;
+                batchIds.add(id);
+            }
+
+            // Multi-threading
+            ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+            List<Future<Queue<String>>> results = new ArrayList<>();
+            results.add(es.submit(() -> {
+                Queue<String> save = new LinkedList<>();
                 try (Transaction tx = graphDb.beginTx()) {
-                    // Init a FIFO queue for processing and interpreting changes
-                    Queue<Node> batch = new LinkedList<>();
-                    for (int i = 0; i < batchSize && !topLvlChangeNodeIds.isEmpty(); i++) {
-                        String id = topLvlChangeNodeIds.poll();
-                        if (id == null) break;
-                        Node change = tx.getNodeByElementId(id);
-                        batch.add(change);
-                    }
+                    // Batch list of nodes
+                    Queue<Node> queue = new LinkedList<>();
+                    batchIds.forEach(id -> queue.add(tx.getNodeByElementId(id)));
 
                     // Can be reused in both phase 1 and 2
-                    logger.debug("Found {} changes across all top-level features", batch.size());
-                    int countBefore = batch.size();
-                    processCore(graphDb, tx, batch, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
-                    int countAfter = batch.size();
+                    logger.debug("Found {} changes across all top-level features", batchIds.size());
+                    int countBefore = batchIds.size();
+                    processCore(graphDb, tx, queue, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
+                    int countAfter = batchIds.size();
                     count.addAndGet(countBefore - countAfter);
 
                     logger.info("INTERPRETED (Phase 2) {} of {} top-level changes",
                             new DecimalFormat("00.00%").format(count.get() * 1. / totalSize), totalSize);
 
                     // Propagate remaining queue elements to next batch
-                    while (!batch.isEmpty()) {
-                        Node change = batch.poll();
-                        topLvlChangeNodeIds.add(change.getElementId());
+                    while (!queue.isEmpty()) {
+                        String changeID = queue.poll().getElementId();
+                        save.add(changeID);
                     }
 
                     tx.commit();
                 } catch (Exception e) {
                     logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
                 }
-                return null;
-            });
+                return save;
+            }));
+
+            // Process the result
+            try {
+                // Wait for the task to complete and get the result
+                for (Future<Queue<String>> result : results) {
+                    for (String id : result.get()) {
+                        topLvlChangeNodeIds.offer(id);
+                    }
+                }
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+
+            // Wait for all threads to finish
             logger.info("Waiting for all threads to finish");
             es.shutdown();
             try {

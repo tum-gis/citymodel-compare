@@ -1,7 +1,6 @@
 package jgraf.citygml;
 
 import com.github.davidmoten.rtree.RTree;
-import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Geometry;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.Neo4jGraphRef;
@@ -12,8 +11,10 @@ import jgraf.neo4j.diff.TranslationChange;
 import jgraf.neo4j.factory.AuxEdgeTypes;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.EdgeTypes;
+import jgraf.utils.ConcurrentKeyHashMap;
 import jgraf.utils.GraphUtils;
 import org.citygml4j.model.citygml.building.Building;
+import org.citygml4j.model.citygml.core.CityModel;
 import org.neo4j.graphdb.*;
 import org.neo4j.graphdb.schema.IndexDefinition;
 import org.neo4j.graphdb.schema.Schema;
@@ -60,7 +61,8 @@ public class Patterns {
         AGGREGATED_TO,
         SAVED_FOR,
         AUX,
-        SCOPED_TO
+        SCOPED_TO,
+        SCOPE_ANCHOR
     }
 
     private enum _RuleRelPropNames {
@@ -87,11 +89,11 @@ public class Patterns {
         done // Used for cleaning up memory nodes in post-processing
     }
 
-    private enum _ScopeNodeLabels implements Label {
+    public enum _ScopeNodeLabels implements Label {
         SCOPE
     }
 
-    private enum _ScopePropNames {
+    public enum _ScopePropNames {
         change_type,
         constraints,
         scope,
@@ -105,7 +107,7 @@ public class Patterns {
         coverage_type_in_spatial
     }
 
-    private enum _ScopePropValues {
+    public enum _ScopePropValues {
         global,
         clustered
     }
@@ -215,7 +217,7 @@ public class Patterns {
         final double[] entireBbox2D = {entireBbox.x1(), entireBbox.y1(), entireBbox.x2(), entireBbox.y2()};
 
         // Phase 1: Multi-threaded processing of sub-elements of top-level features
-        logger.info("Phase 1: Interpreting changes of sub-elements of top-level features");
+        logger.info("Phase 1: Interpreting changes within {} top-level features", nonDelToplevelIds.size());
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         AtomicInteger counter = new AtomicInteger();
         nonDelToplevelIds.parallelStream().forEach(toplevelId -> {
@@ -240,7 +242,7 @@ public class Patterns {
 
         // Phase 2: Aggregation of top-level features (including calculating scope)
         logger.info("Phase 2: Interpreting changes over top-level features");
-        processPhase2(graphDb, nonDelToplevelIds, rtree, entireBbox2D, jsFnString, engine, batchSize, precision, timeout);
+        processPhase2(graphDb, nonDelToplevelIds, entireBbox2D, jsFnString, engine, batchSize, precision, timeout);
 
         // Post-processing
         long nrCleaned = cleanUsedMemory(graphDb);
@@ -283,10 +285,10 @@ public class Patterns {
 
             // Can be reused in both phase 1 and 2
             logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
-            processCore(graphDb, tx, queue, nonDelToplevelSize, entireBbox2D, jsFnString, engine, precision);
+            processCore(graphDb, tx, queue, null, nonDelToplevelSize, entireBbox2D, jsFnString, engine, precision);
 
-            logger.info("INTERPRETED (Phase 1) {} of {} top-level features",
-                    new DecimalFormat("00.00%").format(currentCount * 1. / nonDelToplevelSize), nonDelToplevelSize);
+            logger.info("INTERPRETED (Phase 1) {}",
+                    new DecimalFormat("00.00%").format(currentCount * 1. / nonDelToplevelSize));
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
@@ -296,7 +298,6 @@ public class Patterns {
     private static void processPhase2(
             GraphDatabaseService graphDb,
             List<String> nonDelToplevelIds,
-            RTree<Neo4jGraphRef, Geometry> rtree,
             double[] entireBbox2D,
             String jsFnString,
             ScriptEngine engine,
@@ -313,7 +314,6 @@ public class Patterns {
                     Node change = rel.getStartNode();
                     // Only top-level changes
                     if (change.hasRelationship(Direction.OUTGOING, _RuleRelTypes.AGGREGATED_TO)) return;
-                    logger.info("*** Change type {}", change.getProperty(_ChangePropNames.change_type.toString()));
                     topLvlChangeNodeIds.offer(change.getElementId());
                 });
             });
@@ -323,53 +323,64 @@ public class Patterns {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
         }
 
-        // Batch processing
-        AtomicLong count = new AtomicLong();
-        final long totalSize = topLvlChangeNodeIds.size();
+        // Store scopes in memory for better multithreaded performance
+        // The outer map, as well as the keys and values must be thread-safe -> ConcurrentHashMap
+        // Keys: change type, scope properties and their values (such as x, y, z, and their values)
+        Map<Map<String, String>, Map<String, String>> scopes = new ConcurrentHashMap<>();
+
+        AtomicInteger epoch = new AtomicInteger(0);
         while (!topLvlChangeNodeIds.isEmpty()) {
-            // Init a batch FIFO queue for processing and interpreting changes
-            Queue<String> batchIds = new LinkedList<>();
-            for (int i = 0; i < batchSize && !topLvlChangeNodeIds.isEmpty(); i++) {
-                String id = topLvlChangeNodeIds.poll();
-                if (id == null) break;
-                batchIds.add(id);
-            }
+            epoch.incrementAndGet();
+            logger.info("Starting epoch {} for {} top-level features", epoch.get(), topLvlChangeNodeIds.size());
 
             // Multi-threading
             ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-
             List<Future<Queue<String>>> results = new ArrayList<>();
-            results.add(es.submit(() -> {
-                Queue<String> save = new LinkedList<>();
-                try (Transaction tx = graphDb.beginTx()) {
-                    // Batch list of nodes
-                    Queue<Node> queue = new LinkedList<>();
-                    batchIds.forEach(id -> queue.add(tx.getNodeByElementId(id)));
 
-                    // Can be reused in both phase 1 and 2
-                    logger.debug("Found {} changes across all top-level features", batchIds.size());
-                    int countBefore = batchIds.size();
-                    processCore(graphDb, tx, queue, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
-                    int countAfter = batchIds.size();
-                    count.addAndGet(countBefore - countAfter);
-
-                    logger.info("INTERPRETED (Phase 2) {} of {} top-level changes",
-                            new DecimalFormat("00.00%").format(count.get() * 1. / totalSize), totalSize);
-
-                    // Propagate remaining queue elements to next batch
-                    while (!queue.isEmpty()) {
-                        String changeID = queue.poll().getElementId();
-                        save.add(changeID);
-                    }
-
-                    tx.commit();
-                } catch (Exception e) {
-                    logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            // Batch processing
+            AtomicLong count = new AtomicLong();
+            final long totalSize = topLvlChangeNodeIds.size();
+            while (!topLvlChangeNodeIds.isEmpty()) {
+                // Init a batch FIFO queue for processing and interpreting changes
+                Queue<String> batchIds = new LinkedList<>();
+                for (int i = 0; i < batchSize && !topLvlChangeNodeIds.isEmpty(); i++) {
+                    String id = topLvlChangeNodeIds.poll();
+                    if (id == null) break;
+                    batchIds.add(id);
                 }
-                return save;
-            }));
 
-            // Process the result
+                results.add(es.submit(() -> {
+                    Queue<String> save = new LinkedList<>();
+                    try (Transaction tx = graphDb.beginTx()) {
+                        // Batch list of nodes
+                        Queue<Node> queue = new LinkedList<>();
+                        batchIds.forEach(id -> queue.add(tx.getNodeByElementId(id)));
+
+                        // Can be reused in both phase 1 and 2
+                        logger.debug("Found {} changes across all top-level features", batchIds.size());
+                        int countBefore = queue.size();
+                        processCore(graphDb, tx, queue, scopes, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
+                        int countAfter = queue.size();
+                        count.addAndGet(countBefore - countAfter);
+
+                        logger.info("INTERPRETED (Phase 2) {}",
+                                new DecimalFormat("00.00%").format(count.get() * 1. / totalSize));
+
+                        // Propagate remaining queue elements to next batch
+                        while (!queue.isEmpty()) {
+                            String changeID = queue.poll().getElementId();
+                            save.add(changeID);
+                        }
+
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                    return save;
+                }));
+            }
+
+            // Process the results
             try {
                 // Wait for the task to complete and get the result
                 for (Future<Queue<String>> result : results) {
@@ -395,23 +406,24 @@ public class Patterns {
         }
 
         // Update scope nodes
-        logger.info("Updating scope nodes");
+        logger.info("Updating scopes");
         AtomicInteger scopeCount = new AtomicInteger();
-        try (Transaction tx = graphDb.beginTx()) {
-            tx.findNodes(_ScopeNodeLabels.SCOPE).stream().forEach(scope -> {
-                Lock lockScope = tx.acquireWriteLock(scope);
+        for (Map.Entry<Map<String, String>, Map<String, String>> entry : scopes.entrySet()) {
+            Map<String, String> scope = entry.getValue();
+            scopeCount.incrementAndGet();
 
-                // Coverage of the pattern bbox over the entire dataset
-                double[] patternBBox2D = Arrays.stream(scope.getProperty(_ScopePropNames.pattern_bbox_2d.toString()).toString()
-                        .replaceAll(",", ";").split(";")).mapToDouble(Double::parseDouble).toArray();
-                double patternArea2D = (patternBBox2D[2] - patternBBox2D[0]) * (patternBBox2D[3] - patternBBox2D[1]);
-                double entireArea2D = (entireBbox2D[2] - entireBbox2D[0]) * (entireBbox2D[3] - entireBbox2D[1]);
-                scope.setProperty(_ScopePropNames.coverage_spatial_over_all.toString(), patternArea2D / entireArea2D);
+            // Coverage of the pattern bbox over the entire dataset
+            double[] patternBBox2D = Arrays.stream(scope.get(_ScopePropNames.pattern_bbox_2d.toString())
+                    .replaceAll(",", ";").split(";")).mapToDouble(Double::parseDouble).toArray();
+            double patternArea2D = (patternBBox2D[2] - patternBBox2D[0]) * (patternBBox2D[3] - patternBBox2D[1]);
+            double entireArea2D = (entireBbox2D[2] - entireBbox2D[0]) * (entireBbox2D[3] - entireBbox2D[1]);
+            scope.put(_ScopePropNames.coverage_spatial_over_all.toString(),
+                    String.valueOf(patternArea2D / entireArea2D));
 
-                // Coverage of the change type over the entire dataset
-                int changeCount = Integer.parseInt(scope.getProperty(_ScopePropNames.number_type_count.toString()).toString());
-                scope.setProperty(_ScopePropNames.coverage_type_over_all.toString(),
-                        changeCount * 1. / nonDelToplevelIds.size());
+            // Coverage of the change type over the entire dataset
+            int changeCount = Integer.parseInt(scope.get(_ScopePropNames.number_type_count.toString()));
+            scope.put(_ScopePropNames.coverage_type_over_all.toString(),
+                    String.valueOf(changeCount * 1. / nonDelToplevelIds.size()));
 
                 /*
                 // Coverage of the collected changes in the spatial extent
@@ -422,21 +434,39 @@ public class Patterns {
                 scope.setProperty(_ScopePropNames.coverage_type_in_spatial.toString(),
                         changeCount * 1. / countInSpatial);
                 */
+        }
+        logger.info("Updated {} scopes", scopeCount.get());
 
-                lockScope.release();
-                scopeCount.getAndIncrement();
-            });
+        // Attach scopes to CityModel node
+        logger.info("Attaching scopes to CityModel node");
+        try (Transaction tx = graphDb.beginTx()) {
+            // City model node as anchor for scope nodes
+            Node cityModel = tx.findNodes(Label.label(CityModel.class.getName())).stream()
+                    .filter(n -> n.hasLabel(Label.label(AuxNodeLabels.__PARTITION_INDEX__ + "0")))
+                    .findFirst()
+                    .orElse(null);
+            if (cityModel == null) {
+                throw new RuntimeException("City model node not found");
+            }
+            // Connect scopes to city model
+            for (Map.Entry<Map<String, String>, Map<String, String>> entry : scopes.entrySet()) {
+                Node scopeNode = tx.createNode(Label.label(_ScopeNodeLabels.SCOPE.toString()));
+                entry.getKey().forEach(scopeNode::setProperty);
+                entry.getValue().forEach(scopeNode::setProperty);
+                scopeNode.createRelationshipTo(cityModel, _RuleRelTypes.SCOPED_TO);
+            }
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
         }
-        logger.info("Updated {} scope nodes", scopeCount.get());
+        logger.info("Attached scopes to CityModel node");
     }
 
     private static void processCore(
             GraphDatabaseService graphDb,
             Transaction tx,
             Queue<Node> queue,
+            Map<Map<String, String>, Map<String, String>> scopes,
             int nonDelToplevelSize,
             double[] entireBBox2D,
             String jsFnString,
@@ -477,55 +507,12 @@ public class Patterns {
                 String calcScope = rule.getProperty(_RuleNodePropNames.calc_scope.toString()).toString();
 
                 // Check if the scope node has already been created
-                Node scope = getScope(tx, rule, change, precision);
+                Map<String, String> scope = getScope(scopes, rule, change, precision);
                 if (scope == null) {
-                    // No scope yet -> init
-                    logger.info("Initiating scope for change type {} over {}", changeType, calcScope);
-                    scope = tx.createNode(_ScopeNodeLabels.SCOPE);
-
-                    // Store information in the scope node
-                    scope.setProperty(_ScopePropNames.change_type.toString(), changeType);
-                    scope.setProperty(_ScopePropNames.constraints.toString(), calcScope);
-                    scope.setProperty(_ScopePropNames.number_type_count.toString(), 0);
-                    scope.setProperty(_ScopePropNames.number_type_cap.toString(), nonDelToplevelSize);
-                    scope.setProperty(_ScopePropNames.pattern_bbox_2d.toString(),
-                            Double.MAX_VALUE + "," + Double.MAX_VALUE + ";" + Double.MIN_VALUE + "," + Double.MIN_VALUE);
-                    scope.setProperty(_ScopePropNames.dataset_bbox_2d.toString(),
-                            entireBBox2D[0] + "," + entireBBox2D[1] + ";" + entireBBox2D[2] + "," + entireBBox2D[3]);
-                    if (!calcScope.equals(WILDCARD)) {
-                        String[] scopeTypes = calcScope.trim().split(";");
-                        for (String type : scopeTypes) {
-                            scope.setProperty(type, change.getProperty(type).toString());
-                        }
-                    }
-                    logger.info(" *** INIT {} {}", changeType, calcScope);
+                    scope = addScope(scopes, change, changeType, calcScope, entireBBox2D, nonDelToplevelSize);
                 }
-
                 // Already init a scope node -> update
-                Lock lockScope = tx.acquireWriteLock(scope);
-                int numberTypeCount = Integer.parseInt(scope.getProperty(_ScopePropNames.number_type_count.toString()).toString());
-                scope.setProperty(_ScopePropNames.number_type_count.toString(), ++numberTypeCount);
-                double[] bbox = GraphUtils.getBoundingBox(content);
-                String[] tmpXY = scope.getProperty(_ScopePropNames.pattern_bbox_2d.toString()).toString().split(";");
-                double[] bboxLower = Arrays.stream(tmpXY[0].split(",")).mapToDouble(Double::parseDouble).toArray();
-                double[] bboxUpper = Arrays.stream(tmpXY[1].split(",")).mapToDouble(Double::parseDouble).toArray();
-                if (bbox[0] < bboxLower[0]) bboxLower[0] = bbox[0];
-                if (bbox[1] < bboxLower[1]) bboxLower[1] = bbox[1];
-                if (bbox[3] > bboxUpper[0]) bboxUpper[0] = bbox[3];
-                if (bbox[4] > bboxUpper[1]) bboxUpper[1] = bbox[4];
-                scope.setProperty(_ScopePropNames.pattern_bbox_2d.toString(),
-                        bboxLower[0] + "," + bboxLower[1] + ";" + bboxUpper[0] + "," + bboxUpper[1]);
-                boolean isGlobal = numberTypeCount == nonDelToplevelSize;
-                scope.setProperty(_ScopePropNames.scope.toString(), isGlobal
-                        ? _ScopePropValues.global.toString()
-                        : _ScopePropValues.clustered.toString()); // TODO Currently only either clustered or global
-                logger.info(" *** UPDATE {} {} {}/{}", changeType, calcScope, numberTypeCount, nonDelToplevelSize);
-
-                // Connect to scope node
-                Lock lockStart = tx.acquireWriteLock(change);
-                change.createRelationshipTo(scope, _RuleRelTypes.SCOPED_TO);
-                lockStart.release();
-                lockScope.release();
+                updateScope(scope, content, nonDelToplevelSize);
             }
 
             rule.getRelationships(Direction.OUTGOING, _RuleRelTypes.AGGREGATED_TO).stream().forEach(rel -> {
@@ -583,7 +570,8 @@ public class Patterns {
                         logger.warn("Invoked scope calculation not for top-level feature, skipping...");
                         return;
                     }
-                    Node scope = getScope(tx, rule, change, precision);
+
+                    Map<String, String> scope = getScope(scopes, rule, change, precision);
                     if (scope == null) {
                         logger.warn("No scope node found for change type {}, skipping condition scope", changeType);
                         return;
@@ -591,7 +579,7 @@ public class Patterns {
 
                     // Check if the found scope node satisfies the scope condition (global/clustered)
                     String scRel = rel.getProperty(_RuleRelPropNames.scope.toString()).toString();
-                    String scNode = scope.getProperty(_ScopePropNames.scope.toString()).toString();
+                    String scNode = scope.get(_ScopePropNames.scope.toString());
                     if (!scRel.trim().equals(scNode.trim())) return;
 
                     // Create next change WITHOUT MEMORY NODE (which is only needed for non-top-level features)
@@ -603,9 +591,9 @@ public class Patterns {
                     nextChange.setProperty(_ChangePropNames.change_type.toString(), nextChangeType);
 
                     // Save properties from scope to next change
-                    for (String k : scope.getPropertyKeys()) {
+                    for (String k : scope.keySet()) {
                         if (k.equals(_ChangePropNames.change_type.toString())) continue; // Do not override change type
-                        nextChange.setProperty(k, scope.getProperty(k));
+                        nextChange.setProperty(k, scope.get(k));
                     }
 
                     // Tags
@@ -619,11 +607,10 @@ public class Patterns {
                     nextChange.createRelationshipTo(nextContent, AuxEdgeTypes.TANDEM);
                     lockNextContent.release();
 
-                    // Connect scope node to this next change
-                    Lock lockScope = tx.acquireWriteLock(scope);
-                    scope.createRelationshipTo(nextChange, _RuleRelTypes.AGGREGATED_TO);
-                    lockScope.release();
-
+                    Lock lockChange = tx.acquireWriteLock(change);
+                    // Connect change to this next change
+                    change.createRelationshipTo(nextChange, _RuleRelTypes.AGGREGATED_TO);
+                    lockChange.release();
                     lockNextChange.release();
 
                     // Add this next change to the queue
@@ -877,7 +864,8 @@ public class Patterns {
         }
     }
 
-    private static Node getScope(Transaction tx, Node rule, Node change, double precision) {
+    private static Map<String, String> getScope(Map<Map<String, String>, Map<String, String>> scopes,
+                                                Node rule, Node change, double precision) {
         if (!rule.hasProperty(_RuleNodePropNames.calc_scope.toString())) {
             throw new RuntimeException("The scope condition in a rule edge must come " +
                     "with a directive to calculate scope in the previous rule node");
@@ -899,17 +887,94 @@ public class Patterns {
         }
 
         String changeType = change.getProperty(_ChangePropNames.change_type.toString()).toString();
-        List<Node> scopes = tx.findNodes(_ScopeNodeLabels.SCOPE, _ScopePropNames.change_type.toString(), changeType).stream()
-                .filter(scope -> {
-                    // It suffices to check for existence of this scope node
-                    if (scopeTypes == null) return true;
-                    // Otherwise, check for exact comparison of properties
-                    return fuzzyEquals(change, scope, "", "", scopeTypes, precision);
-                }).toList();
-        if (scopes.size() > 1)
-            throw new RuntimeException("Multiple scope nodes for same change type " + changeType + " and properties " + scopeTypes);
-        if (scopes.size() == 1) return scopes.get(0);
-        return null;
+        Map<String, String> key = new ConcurrentKeyHashMap<>();
+        key.put(_ScopePropNames.change_type.toString(), changeType);
+        if (scopeTypes != null) {
+            for (String s : scopeTypes) {
+                key.put(s, normalize(change.getProperty(s).toString(), precision));
+            }
+        }
+        return scopes.get(key);
+    }
+
+    private static Map<String, String> addScope(Map<Map<String, String>, Map<String, String>> scopes,
+                                                Node change, String changeType, String calcScope,
+                                                double[] entireBBox2D, int nonDelToplevelSize) {
+        // Store information in the scope key
+        Map<String, String> key = new ConcurrentKeyHashMap<>();
+        key.put(_ScopePropNames.change_type.toString(), changeType);
+        if (!calcScope.equals(WILDCARD)) {
+            String[] scopeTypes = calcScope.trim().split(";");
+            for (String type : scopeTypes) {
+                key.put(type, change.getProperty(type).toString());
+            }
+        }
+
+        // Store information in the scope value
+        Map<String, String> value = new ConcurrentHashMap<>();
+        value.put(_ScopePropNames.constraints.toString(), calcScope);
+        value.put(_ScopePropNames.number_type_count.toString(), String.valueOf(0));
+        value.put(_ScopePropNames.number_type_cap.toString(), String.valueOf(nonDelToplevelSize));
+        value.put(_ScopePropNames.pattern_bbox_2d.toString(),
+                Double.MAX_VALUE + "," + Double.MAX_VALUE + ";" + Double.MIN_VALUE + "," + Double.MIN_VALUE);
+        value.put(_ScopePropNames.dataset_bbox_2d.toString(),
+                entireBBox2D[0] + "," + entireBBox2D[1] + ";" + entireBBox2D[2] + "," + entireBBox2D[3]);
+
+        // Add to main map
+        logger.debug("Initiated scope for {} with calc_scope = {}", changeType, calcScope);
+        scopes.put(key, value);
+        return value;
+    }
+
+    private static void updateScope(Map<String, String> scope, Node content, int nonDelToplevelSize) {
+        int numberTypeCount = Integer.parseInt(scope.get(_ScopePropNames.number_type_count.toString()));
+        scope.put(_ScopePropNames.number_type_count.toString(), String.valueOf(++numberTypeCount));
+
+        double[] bbox = GraphUtils.getBoundingBox(content);
+        String[] tmpXY = scope.get(_ScopePropNames.pattern_bbox_2d.toString()).split(";");
+        double[] bboxLower = Arrays.stream(tmpXY[0].split(",")).mapToDouble(Double::parseDouble).toArray();
+        double[] bboxUpper = Arrays.stream(tmpXY[1].split(",")).mapToDouble(Double::parseDouble).toArray();
+        if (bbox[0] < bboxLower[0]) bboxLower[0] = bbox[0];
+        if (bbox[1] < bboxLower[1]) bboxLower[1] = bbox[1];
+        if (bbox[3] > bboxUpper[0]) bboxUpper[0] = bbox[3];
+        if (bbox[4] > bboxUpper[1]) bboxUpper[1] = bbox[4];
+        scope.put(_ScopePropNames.pattern_bbox_2d.toString(),
+                bboxLower[0] + "," + bboxLower[1] + ";" + bboxUpper[0] + "," + bboxUpper[1]);
+        boolean isGlobal = numberTypeCount == nonDelToplevelSize;
+        scope.put(_ScopePropNames.scope.toString(), isGlobal
+                ? _ScopePropValues.global.toString()
+                : _ScopePropValues.clustered.toString()); // TODO Currently only either clustered or global
+    }
+
+    private static boolean fuzzyEquals(Node n1, Node n2,
+                                       String prefix1, String prefix2, Set<String> properties, double precision) {
+        for (String property : properties) {
+            // TODO Not only equals, but also other comparison operators?
+            if (!fuzzyEquals(n1.getProperty(prefix1 + property).toString(),
+                    n2.getProperty(prefix2 + property).toString().toString(), precision))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean fuzzyEquals(String s1, String s2, double precision) {
+        // Trim strings
+        String a = s1.trim();
+        String b = s2.trim();
+
+        // Numeric values
+        String numericRegex = "[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)";
+        if (a.matches(numericRegex) && b.matches(numericRegex)) {
+            return Math.abs(Double.parseDouble(a) - Double.parseDouble(b)) <= precision;
+        }
+
+        // Zoned date-time values such as "2016-11-22T00:00+01:00[Europe/Berlin]"
+        String zonedDateTimeRegex = "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\[.*]";
+        if (a.matches(zonedDateTimeRegex) && b.matches(zonedDateTimeRegex)) {
+            return ZonedDateTime.parse(a).equals(ZonedDateTime.parse(b));
+        }
+
+        return a.equals(b);
     }
 
     private static void propagate(Transaction tx, Node from, Node to, String propagate, String prefix, double precision) { // propagate = "x;y;z" or "*"
@@ -1031,37 +1096,6 @@ public class Patterns {
             return Math.round(d * Math.pow(10, nrAfterComma)) / Math.pow(10, nrAfterComma) + "";
         }
         return value;
-    }
-
-    private static boolean fuzzyEquals(Node n1, Node n2,
-                                       String prefix1, String prefix2, Set<String> properties, double precision) {
-        for (String property : properties) {
-            // TODO Not only equals, but also other comparison operators?
-            if (!fuzzyEquals(n1.getProperty(prefix1 + property).toString(),
-                    n2.getProperty(prefix2 + property).toString(), precision))
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean fuzzyEquals(String s1, String s2, double precision) {
-        // Trim strings
-        String a = s1.trim();
-        String b = s2.trim();
-
-        // Numeric values
-        String numericRegex = "[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)";
-        if (a.matches(numericRegex) && b.matches(numericRegex)) {
-            return Math.abs(Double.parseDouble(a) - Double.parseDouble(b)) <= precision;
-        }
-
-        // Zoned date-time values such as "2016-11-22T00:00+01:00[Europe/Berlin]"
-        String zonedDateTimeRegex = "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}\\[.*]";
-        if (a.matches(zonedDateTimeRegex) && b.matches(zonedDateTimeRegex)) {
-            return ZonedDateTime.parse(a).equals(ZonedDateTime.parse(b));
-        }
-
-        return a.equals(b);
     }
 
     public static void markTopSplitChange(Transaction tx, Class<?> changeClass, Node leftNode, List<Node> rightNodes) {

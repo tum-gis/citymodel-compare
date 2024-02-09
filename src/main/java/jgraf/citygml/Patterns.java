@@ -331,7 +331,7 @@ public class Patterns {
         AtomicInteger epoch = new AtomicInteger(0);
         while (!topLvlChangeNodeIds.isEmpty()) {
             epoch.incrementAndGet();
-            logger.info("Starting epoch {} for {} top-level features", epoch.get(), topLvlChangeNodeIds.size());
+            logger.info("Starting epoch {} for {} top-level changes", epoch.get(), topLvlChangeNodeIds.size());
 
             // Multi-threading
             ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());

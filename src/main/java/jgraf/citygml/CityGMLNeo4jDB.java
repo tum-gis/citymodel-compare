@@ -427,59 +427,58 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         String finalRightListNodeId = rightListNodeId;
         final long NR_OF_TASKS = leftIdList.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
+
+        leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
+            try (Transaction tx = graphDb.beginTx()) {
+                Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
+                Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
+
+                Node leftRelNode = tx.getNodeByElementId(leftRelNodeId);
+                Relationship leftRel = leftRelNode.getRelationships(Direction.INCOMING).stream()
+                        .filter(r -> r.getStartNode().getElementId().equals(finalLeftListNodeId))
+                        .collect(Collectors.toSet()).iterator().next();
+
+                Map.Entry<Node, DiffResult> resultEntry = findBest(tx, leftRel, rightListNode);
+                Node rightRelNode = resultEntry.getKey();
+                DiffResult diffResult = resultEntry.getValue();
+                if (diffResult.getLevel() == SimilarityLevel.SIMILAR_GEOMETRY) {
+                    // Found geometric matched top-level
+                    rightIdList.remove(rightRelNode.getElementId());
+                    boolean tmpDiffFound = diff(tx, leftRelNode, rightRelNode, true,
+                            null, ((DiffResultGeo) diffResult).getSkip());
+                    if (tmpDiffFound) diffFound.set(true);
+                } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
+                    // Multiple top-level candidates split from the old one
+                    List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
+                            .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
+                                    EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
+                    rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
+                    Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
+                    diffFound.set(true);
+                } else {
+                    // Found no match
+                    diffFound.set(true);
+                    new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
+                }
+                TASKS_DONE.getAndIncrement();
+                logger.info("MATCHED {}", new DecimalFormat("00.00%").format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
+                tx.commit();
+            } catch (Exception e) {
+                logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        }));
+        // Wait for all threads to finish
+        logger.info("Waiting for all threads to finish");
+        executorService.shutdown();
         try {
-            leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit(() -> {
-                try (Transaction tx = graphDb.beginTx()) {
-                    Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
-                    Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
-                    Node leftRelNode = tx.getNodeByElementId(leftRelNodeId);
-                    Relationship leftRel = leftRelNode.getRelationships(Direction.INCOMING).stream()
-                            .filter(r -> r.getStartNode().equals(leftListNode))
-                            .collect(Collectors.toSet()).iterator().next();
-                    Map.Entry<Node, DiffResult> resultEntry = findBest(tx, leftRel, rightListNode);
-                    Node rightRelNode = resultEntry.getKey();
-                    DiffResult diffResult = resultEntry.getValue();
-                    if (diffResult.getLevel() == SimilarityLevel.SIMILAR_GEOMETRY) {
-                        // Found geometric matched top-level
-                        rightIdList.remove(rightRelNode.getElementId());
-                        boolean tmpDiffFound = diff(tx, leftRelNode, rightRelNode, true,
-                                null, ((DiffResultGeo) diffResult).getSkip());
-                        if (tmpDiffFound) diffFound.set(true);
-                    } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
-                        // Multiple top-level candidates split from the old one
-                        List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
-                                .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
-                                        EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
-                        rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
-                        Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
-                        diffFound.set(true);
-                    } else {
-                        // Found no match
-                        diffFound.set(true);
-                        new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
-                    }
-                    TASKS_DONE.getAndIncrement();
-                    logger.info("MATCHED {}", new DecimalFormat("00.00%").format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
-                    tx.commit();
-                } catch (Exception e) {
-                    logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));
-                }
-            }));
-        } catch (Exception e) {
-            logger.error(e.getMessage() + "D1\n" + Arrays.toString(e.getStackTrace()));
-        } finally {
-            // Wait for all threads to finish
-            logger.info("Waiting for all threads to finish");
-            executorService.shutdown();
-            try {
-                if (!executorService.awaitTermination(config.MATCHER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                    executorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
+            if (!executorService.awaitTermination(config.MATCHER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
             }
-            logger.info("All threads finished");
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
         }
+        logger.info("All threads finished");
 
         // Remaining multi-relationships in right
         if (!rightIdList.isEmpty()) {
@@ -496,7 +495,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             String finalLeftListNodeId1 = leftListNodeId;
             String finalRightListNodeId1 = rightListNodeId;
-            batches.parallelStream().forEach(batch -> es.submit(() -> {
+            batches.parallelStream().forEach(batch -> es.submit((Callable<Void>) () -> {
                 try (Transaction tx = graphDb.beginTx()) {
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId1);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId1);
@@ -504,7 +503,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         try {
                             Node rightRelNode = tx.getNodeByElementId(rightRelNodeId);
                             Relationship rightRel = rightRelNode.getRelationships(Direction.INCOMING).stream()
-                                    .filter(r -> r.getStartNode().equals(rightListNode))
+                                    .filter(r -> r.getStartNode().getElementId().equals(finalRightListNodeId1))
                                     .collect(Collectors.toSet()).iterator().next();
                             new InsertNodeChange(tx, leftListNode, rightListNode, rightRel);
                         } catch (Exception e) {
@@ -515,6 +514,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 } catch (Exception e) {
                     logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
                 }
+                return null;
             }));
             logger.info("Waiting for all threads to finish");
             es.shutdown();

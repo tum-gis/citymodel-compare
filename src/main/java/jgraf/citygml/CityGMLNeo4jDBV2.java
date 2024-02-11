@@ -258,7 +258,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                Arrays.asList(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
+                                List.of(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
                                 null
                         ));
             }
@@ -278,7 +278,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                Arrays.asList(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
+                                List.of(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
                                 null
                         ));
             }
@@ -369,7 +369,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             // Must consider both ratios in case one bbox is much bigger than the other
                             if ((ratioSizeLR >= config.MATCHER_TOLERANCE_SOLIDS && ratioSizeLR <= 1)
                                     || (ratioSizeRL >= config.MATCHER_TOLERANCE_SOLIDS && ratioSizeRL <= 1)) {
-                                // Choose the candidate with shortest distance
+                                // Choose the candidate with the shortest distance
                                 double centroidTranslation = rightCentroid.subtract(leftCentroid).norm();
                                 if (centroidTranslation <= minCentroidTranslation.get()) {
                                     minCentroidTranslation.set(centroidTranslation);

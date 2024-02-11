@@ -605,10 +605,15 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
             if (candidateTranslationSameSize != null && candidateTranslationResize != null) {
                 logger.warn("Found multiple best matching candidates for {} with translation {}, " +
-                                "but both with and without resize {}, ignoring this geometry",
+                                "but both with and without resize {}, taking the one with translation and resize",
                         ClazzUtils.getSimpleClassName(leftRelNode), minTranslation, minResize);
-                return new AbstractMap.SimpleEntry<>(null,
-                        new DiffResult(SimilarityLevel.NONE, 0));
+                return new AbstractMap.SimpleEntry<>(candidateTranslationResize,
+                        new DiffResultGeoTranslationResize(
+                                minTranslation.toArray(),
+                                minResize.toArray(),
+                                List.of(Label.label(MultiSurface.class.getName())),
+                                Label.label(Polygon.class.getName())
+                        ));
             }
 
             if (candidateTranslationSameSize != null) {

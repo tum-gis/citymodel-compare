@@ -428,7 +428,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         final long NR_OF_TASKS = leftIdList.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
 
-        leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
+        leftIdList.forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
                 Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
                 Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
@@ -485,17 +485,17 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             diffFound.set(true);
 
             // Batch transactions
-            List<List<String>> batches = new ArrayList<>();
-            int batchSize = config.DB_BATCH_SIZE;
-            for (int i = 0; i < rightIdList.size(); i += batchSize) {
-                batches.add(rightIdList.subList(i, Math.min(i + batchSize, rightIdList.size())));
+            List<List<String>> rightBatches = new ArrayList<>();
+            int rightBatchSize = config.DB_BATCH_SIZE;
+            for (int i = 0; i < rightIdList.size(); i += rightBatchSize) {
+                rightBatches.add(rightIdList.subList(i, Math.min(i + rightBatchSize, rightIdList.size())));
             }
-            logger.info("Initiated {} batches for remaining multi-relationships in right", batches.size());
+            logger.info("Initiated {} batches for remaining multi-relationships in right", rightBatches.size());
 
             ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             String finalLeftListNodeId1 = leftListNodeId;
             String finalRightListNodeId1 = rightListNodeId;
-            batches.parallelStream().forEach(batch -> es.submit((Callable<Void>) () -> {
+            rightBatches.forEach(batch -> es.submit((Callable<Void>) () -> {
                 try (Transaction tx = graphDb.beginTx()) {
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId1);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId1);
@@ -851,6 +851,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     private Node getAnchorNode(Transaction tx, Node node, Label anchor) {
+        // Lock lock = tx.acquireWriteLock(node);
         Traverser traverser = tx.traversalDescription()
                 .depthFirst()
                 .expand(PathExpanders.forDirection(Direction.OUTGOING))
@@ -863,6 +864,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 .traverse(node);
         List<Node> anchorNodes = new ArrayList<>();
         traverser.forEach(path -> anchorNodes.add(path.endNode()));
+        // lock.release();
         if (anchorNodes.isEmpty()) {
             logger.error("Found no anchor node {}, attaching to source node, where change occurred", anchor.name());
             return node;

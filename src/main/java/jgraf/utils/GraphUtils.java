@@ -19,8 +19,8 @@ public class GraphUtils {
     }
 
     public static boolean isGeomValid(Node geomNode) {
-        return geomNode.hasProperty(AuxPropNames.GEOM_VALID.toString())
-                && Boolean.parseBoolean(geomNode.getProperty(AuxPropNames.GEOM_VALID.toString()).toString());
+        return !geomNode.hasProperty(AuxPropNames.GEOM_VALID.toString())
+                || Boolean.parseBoolean(geomNode.getProperty(AuxPropNames.GEOM_VALID.toString()).toString());
     }
 
     public static double[] getBoundingBox(Node abstractCityObjectNode) { // Building or BuildingPart // TODO This is momentarily only in CityGML v2

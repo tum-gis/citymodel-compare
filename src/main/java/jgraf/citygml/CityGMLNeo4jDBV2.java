@@ -8,7 +8,6 @@ import jgraf.neo4j.factory.AuxPropNames;
 import jgraf.neo4j.factory.EdgeTypes;
 import jgraf.neo4j.factory.PropNames;
 import jgraf.utils.ClazzUtils;
-import jgraf.utils.GeometryUtils;
 import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.*;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
@@ -20,8 +19,7 @@ import org.citygml4j.builder.jaxb.CityGMLBuilderException;
 import org.citygml4j.core.model.CityGMLVersion;
 import org.citygml4j.geometry.Matrix;
 import org.citygml4j.model.citygml.CityGML;
-import org.citygml4j.model.citygml.building.BoundarySurfaceProperty;
-import org.citygml4j.model.citygml.building.BuildingPartProperty;
+import org.citygml4j.model.citygml.building.*;
 import org.citygml4j.model.citygml.core.AbstractCityObject;
 import org.citygml4j.model.citygml.core.CityModel;
 import org.citygml4j.model.citygml.core.CityObjectMember;
@@ -32,6 +30,7 @@ import org.citygml4j.model.gml.base.StringOrRef;
 import org.citygml4j.model.gml.basicTypes.Measure;
 import org.citygml4j.model.gml.feature.BoundingShape;
 import org.citygml4j.model.gml.geometry.aggregates.MultiCurve;
+import org.citygml4j.model.gml.geometry.aggregates.MultiSurface;
 import org.citygml4j.model.gml.geometry.primitives.*;
 import org.citygml4j.model.gml.measures.Length;
 import org.citygml4j.util.bbox.BoundingBoxOptions;
@@ -40,10 +39,10 @@ import org.citygml4j.xml.io.reader.*;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.collection.immutable.Vector3;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -123,6 +122,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 executorService.shutdownNow();
             }
             reader.close();
+            logger.info("Mapped all {} top-level features", tlCount);
             logger.info("Finished mapping file {}", filePath);
             dbStats.stopTimer("Map input file [" + partitionIndex + "]");
 
@@ -258,7 +258,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                Arrays.asList(Label.label(Solid.class.getName())) // TODO Label list to skip for top-level features
+                                Arrays.asList(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
+                                null
                         ));
             }
             if (rightRefDistance.get() != null) {
@@ -277,7 +278,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                Arrays.asList(Label.label(Solid.class.getName())) // TODO Label list to skip for top-level features
+                                Arrays.asList(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
+                                null
                         ));
             }
             // Check for ObjectSplit changes (whether this old top-level feature has been split)
@@ -387,7 +389,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             new DiffResultGeo(
                                     SimilarityLevel.SIMILAR_GEOMETRY,
                                     -minCentroidTranslation.get(),
-                                    null // TODO Label list to skip for solids
+                                    null, // TODO Label list to skip for solids
+                                    null
                             ));
                 }
                 logger.debug(
@@ -399,7 +402,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         new DiffResultGeo(
                                 SimilarityLevel.SIMILAR_GEOMETRY,
                                 maxOverlapRatio.get(),
-                                null // TODO Label list to skip for solids
+                                null, // TODO Label list to skip for solids
+                                null
                         ));
             }
             return new AbstractMap.SimpleEntry<>(null,
@@ -415,151 +419,117 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         // Vector init norm = sqrt(3a^2) <= t => a <= t/sqrt(3)
         double maxAllowed = config.MATCHER_TRANSLATION_DISTANCE / Math.sqrt(3);
 
-        // BoundarySurfaceProperties
+        // BoundarySurfaceProperties -> scout for type (roofs/walls/grounds) and centroid distance
+        // -> best match with min distance -> however still have to match content, no skipping geometries
         if (leftRelNode.hasLabel(Label.label(BoundarySurfaceProperty.class.getName()))) {
             // TODO BoundarySurfaceProperty of Bridge and Tunnel
-            BoundarySurfaceProperty leftBsp = (BoundarySurfaceProperty) toObject(leftRelNode);
-            double[] tmpLeftBBox = GraphUtils.getBoundingBox(
-                    leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
-            Vector3D leftCentroid = Vector3D.of(
-                    0.5 * (tmpLeftBBox[0] + tmpLeftBBox[3]),
-                    0.5 * (tmpLeftBBox[1] + tmpLeftBBox[4]),
-                    0.5 * (tmpLeftBBox[2] + tmpLeftBBox[5])
+            BoundarySurfaceProperty leftBSP = (BoundarySurfaceProperty) toObject(leftRelNode);
+            AbstractBoundarySurface leftBS = leftBSP.getBoundarySurface();
+            List<SurfaceProperty> leftSPs = leftBS.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
+            if (leftSPs.size() > 1) {
+                logger.warn("Found left BoundarySurfaceProperty, node id = {}, with multiple SurfaceProperties, using only the first",
+                        leftRelNode.getElementId());
+            }
+            SurfaceProperty leftSP = leftSPs.get(0);
+            Polygon leftPolygon = (Polygon) leftSP.getSurface();
+
+            // Using bbox for convex and non-convex polygons
+            double[] leftBBox = polygonBBox(leftPolygon);
+            Vector3D leftSizes = Vector3D.of(
+                    leftBBox[3] - leftBBox[0],
+                    leftBBox[4] - leftBBox[1],
+                    leftBBox[5] - leftBBox[2]
             );
-            Plane leftPlane = boundarySurfacePropertyToPlane(leftBsp, precision);
+
+            // Calculate normal vector
+            Plane leftPlane = boundarySurfacePropertyToPlane(leftBSP, precision);
             if (leftPlane == null) {
-                GraphUtils.markGeomInvalid(tx, leftRelNode);
-                logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", leftRelNode.getElementId());
+                logger.warn("Could not calculate plane for SurfaceProperty, node ID {}", leftRelNode.getElementId());
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             }
             Vector3D.Unit leftNormal = leftPlane.getNormal();
+            Vector3D leftOrigin = leftPlane.getOrigin();
 
-            Node candidate = null;
+            List<Double> leftPoints = toDoubleList(leftPolygon.getExterior().getRing().toList3d());
+
+            Node candidateTranslationSameSize = null;
             Vector3D minTranslation = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
             double minTranslationNorm = config.MATCHER_TRANSLATION_DISTANCE;
+
+            Node candidateTranslationResize = null;
+            Vector3D minResize = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
+            double minResizeNorm = config.MATCHER_TRANSLATION_DISTANCE;
+
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 if (!GraphUtils.isGeomValid(rightRelNode)) continue;
-                BoundarySurfaceProperty rightBsp = (BoundarySurfaceProperty) toObject(rightRelNode);
-                double[] tmpRightBBox = GraphUtils.getBoundingBox(
-                        rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
-                Vector3D rightCentroid = Vector3D.of(
-                        0.5 * (tmpRightBBox[0] + tmpRightBBox[3]),
-                        0.5 * (tmpRightBBox[1] + tmpRightBBox[4]),
-                        0.5 * (tmpRightBBox[2] + tmpRightBBox[5])
+                BoundarySurfaceProperty rightBSP = (BoundarySurfaceProperty) toObject(rightRelNode);
+                AbstractBoundarySurface rightBS = rightBSP.getBoundarySurface();
+                List<SurfaceProperty> rightSPs = rightBS.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
+                if (rightSPs.size() > 1) {
+                    logger.warn("Found right BoundarySurfaceProperty, node id = {}, with multiple SurfaceProperties, using only the first",
+                            rightRelNode.getElementId());
+                }
+                SurfaceProperty rightSP = rightSPs.get(0);
+                Polygon rightPolygon = (Polygon) rightSP.getSurface();
+
+                // Check label
+                if ((leftBS instanceof RoofSurface) && !(rightBS instanceof RoofSurface)) continue;
+                if ((leftBS instanceof WallSurface) && !(rightBS instanceof WallSurface)) continue;
+                if ((leftBS instanceof GroundSurface) && !(rightBS instanceof GroundSurface)) continue;
+                // TODO Support for roofs, walls, and grounds of bridges and tunnels, etc.
+
+                double[] rightBBox = polygonBBox(rightPolygon);
+                Vector3D rightSizes = Vector3D.of(
+                        rightBBox[3] - rightBBox[0],
+                        rightBBox[4] - rightBBox[1],
+                        rightBBox[5] - rightBBox[2]
                 );
-                Plane rightPlane = boundarySurfacePropertyToPlane(rightBsp, precision);
+
+                // Calculate normal vector
+                Plane rightPlane = boundarySurfacePropertyToPlane(rightBSP, precision);
                 if (rightPlane == null) {
                     GraphUtils.markGeomInvalid(tx, rightRelNode);
-                    logger.warn("Could not calculate plane for BoundarySurfaceProperty, node ID {}", rightRelNode.getElementId());
                     continue;
                 }
                 Vector3D.Unit rightNormal = rightPlane.getNormal();
+                Vector3D rightOrigin = rightPlane.getOrigin();
 
-                // Check for surface orientation
+                // Compute diff in orientation
                 double angle = leftNormal.angle(rightNormal);
-                if (anglePrecision.eqZero(angle)) {
-                    logger.debug("Found {} with matching orientation (angle {}), checking for translation...",
-                            ClazzUtils.getSimpleClassName(leftRelNode), angle);
-                    // Then pick min centroid translation
-                    Vector3D translation = rightCentroid.subtract(leftCentroid);
-                    if (translation.eq(Vector3D.ZERO, precision)) {
-                        // Zero translation
-                        logger.debug("Found the best matching candidate for {} without translation",
+                if (!anglePrecision.eqZero(angle)) {
+                    continue;
+                } // TODO Support for small rotations?
+
+                Vector3D sizeChange = rightSizes.subtract(leftSizes);
+
+                // Compute translation
+                Vector3D translation = rightOrigin.subtract(leftOrigin);
+                if (translation.eq(Vector3D.ZERO, precision)) {
+                    if (sizeChange.eq(Vector3D.ZERO, precision)) {
+                        // Same orientation, same position, same size
+                        logger.debug("Found the best matching candidate for {} with same orientation, same position, and same size",
                                 ClazzUtils.getSimpleClassName(leftRelNode));
                         return new AbstractMap.SimpleEntry<>(rightRelNode,
                                 new DiffResultGeo(
                                         SimilarityLevel.SIMILAR_GEOMETRY,
                                         1,
-                                        null // TODO Label list to skip for polygons
+                                        List.of(Label.label(MultiSurface.class.getName())),
+                                        null
                                 ));
-                    }
-                    // Non-zero translation
-                    // Pick one with the least translation
-                    double translationNorm = translation.norm();
-                    if (translationNorm < minTranslationNorm) {
-                        minTranslation = translation;
-                        minTranslationNorm = translationNorm;
-                        candidate = rightRelNode;
-                    }
-                }
-            }
-
-            if (candidate != null) {
-                logger.debug(
-                        "Found the best matching candidate for {} with translation {}",
-                        ClazzUtils.getSimpleClassName(leftRelNode),
-                        minTranslationNorm);
-                return new AbstractMap.SimpleEntry<>(candidate,
-                        new DiffResultGeo(
-                                SimilarityLevel.SIMILAR_GEOMETRY,
-                                -minTranslationNorm,
-                                null // TODO Label list to skip for BoundarySurfaceProperty
-                        ));
-            }
-            return new AbstractMap.SimpleEntry<>(null,
-                    new DiffResult(SimilarityLevel.NONE, 0));
-        }
-
-        // SurfaceProperties that contain Polygons
-        // TODO Support other geometries than Polygons (such as CompositeSurface)?
-        if (leftRelNode.hasLabel(Label.label(SurfaceProperty.class.getName()))
-                && leftRelNode.hasRelationship(Direction.OUTGOING, EdgeTypes.object)
-                && leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
-                .hasLabel(Label.label(Polygon.class.getName()))) {
-            SurfaceProperty leftSurfaceProperty = (SurfaceProperty) toObject(leftRelNode);
-            Polygon leftPolygon = (Polygon) leftSurfaceProperty.getObject();
-
-            // Using bbox for convex and non-convex polygons
-            double[] tmpLeftBBox = polygonBBox(leftPolygon);
-            Vector3D leftSizes = Vector3D.of(
-                    tmpLeftBBox[3] - tmpLeftBBox[0],
-                    tmpLeftBBox[4] - tmpLeftBBox[1],
-                    tmpLeftBBox[5] - tmpLeftBBox[2]
-            );
-            Vector3D leftCentroid = Vector3D.of(
-                    0.5 * (tmpLeftBBox[0] + tmpLeftBBox[3]),
-                    0.5 * (tmpLeftBBox[1] + tmpLeftBBox[4]),
-                    0.5 * (tmpLeftBBox[2] + tmpLeftBBox[5])
-            );
-
-            List<Double> leftPoints = toDoubleList(leftPolygon.getExterior().getRing().toList3d());
-            Node candidate = null;
-            Vector3D minTranslation = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
-            double minTranslationNorm = config.MATCHER_TRANSLATION_DISTANCE;
-            for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
-                Node rightRelNode = rightRel.getEndNode();
-                SurfaceProperty rightSurfaceProperty = (SurfaceProperty) toObject(rightRelNode);
-                Polygon rightPolygon = (Polygon) rightSurfaceProperty.getObject(); // TODO Other geometries than Polygons?
-                double[] tmpRightBBox = polygonBBox(rightPolygon);
-                Vector3D rightSizes = Vector3D.of(
-                        tmpRightBBox[3] - tmpRightBBox[0],
-                        tmpRightBBox[4] - tmpRightBBox[1],
-                        tmpRightBBox[5] - tmpRightBBox[2]
-                );
-                Vector3D rightCentroid = Vector3D.of(
-                        0.5 * (tmpRightBBox[0] + tmpRightBBox[3]),
-                        0.5 * (tmpRightBBox[1] + tmpRightBBox[4]),
-                        0.5 * (tmpRightBBox[2] + tmpRightBBox[5])
-                );
-
-                // First, test if same size
-                if (leftSizes.eq(rightSizes, precision)) {
-                    Vector3D translation = rightCentroid.subtract(leftCentroid);
-                    if (translation.eq(Vector3D.ZERO, precision)) {
-                        // Zero translation -> Exact geometric match
-                        // TODO Additionally check if all points of one polyon are contained in the other?
-                        logger.debug("Found the best matching candidate for {} without translation",
-                                ClazzUtils.getSimpleClassName(leftRelNode));
+                    } else {
+                        // Same orientation + Same position + Different size
+                        logger.debug("Found the best matching candidate for {} with same orientation, same position, but different size, magnitude {}",
+                                ClazzUtils.getSimpleClassName(leftRelNode), sizeChange);
                         return new AbstractMap.SimpleEntry<>(rightRelNode,
-                                new DiffResultGeo(
-                                        SimilarityLevel.SIMILAR_GEOMETRY,
-                                        1,
-                                        Arrays.asList(Label.label(LinearRing.class.getName())) // TODO Label list to skip for polygons
+                                new DiffResultGeoSize(
+                                        sizeChange.toArray(),
+                                        List.of(Label.label(MultiSurface.class.getName())),
+                                        Label.label(Polygon.class.getName())
                                 ));
                     }
-                    // Non-zero translation
+                } else if (translation.norm() < config.MATCHER_TRANSLATION_DISTANCE) {
                     // Test whether the translation is correct by
                     // translating the left polygon and compare it with the right polygon
                     Matrix translationMatrix = new Matrix(new double[][]{
@@ -574,49 +544,95 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 leftPoints.get(k), leftPoints.get(k + 1), leftPoints.get(k + 2));
                         p.transform3D(translationMatrix);
                         // TODO Check if this translation is along only one axis (side moving, vertical raise, etc.)
-                        if (!(precision.gte(p.getX(), tmpRightBBox[0])
-                                && precision.gte(p.getY(), tmpRightBBox[1])
-                                && precision.gte(p.getZ(), tmpRightBBox[2])
-                                && precision.lte(p.getX(), tmpRightBBox[3])
-                                && precision.lte(p.getY(), tmpRightBBox[4])
-                                && precision.lte(p.getZ(), tmpRightBBox[5]))
+                        if (!(precision.gte(p.getX(), rightBBox[0])
+                                && precision.gte(p.getY(), rightBBox[1])
+                                && precision.gte(p.getZ(), rightBBox[2])
+                                && precision.lte(p.getX(), rightBBox[3])
+                                && precision.lte(p.getY(), rightBBox[4])
+                                && precision.lte(p.getZ(), rightBBox[5]))
                         ) {
                             break;
                         }
                     }
+
+                    boolean isSet = false;
+                    double translationNorm = translation.norm();
+                    if (translationNorm < minTranslationNorm) {
+                        isSet = true;
+                        minTranslationNorm = translationNorm;
+                        minTranslation = translation;
+                    }
                     if (k == leftPoints.size()) {
-                        // All vertices of translated left polygon is contained in the right polygon
-                        double translationNorm = translation.norm();
-                        if (translationNorm < minTranslationNorm) {
-                            // Search for the min non-zero translation
-                            minTranslation = translation;
-                            minTranslationNorm = translationNorm;
-                            candidate = rightRelNode;
+                        // Same orientation, same size, but with translation -> Find min translation
+                        if (isSet) candidateTranslationSameSize = rightRelNode;
+                    } else {
+                        if (isSet) {
+                            double resizeNorm = sizeChange.norm();
+                            if (resizeNorm < minResizeNorm) {
+                                minResizeNorm = resizeNorm;
+                                minResize = sizeChange;
+                                candidateTranslationResize = rightRelNode;
+                            }
                         }
                     }
-                } else {
-                    // Same orientation, close spatial location, but different sizes
-                    // TODO Classify further which size change this is
-                    Vector3D sizeChange = rightSizes.subtract(leftSizes);
-                    logger.debug("Detected a change in size of {}, magnitude {}",
-                            ClazzUtils.getSimpleClassName(leftRelNode), sizeChange);
-                    return new AbstractMap.SimpleEntry<>(rightRelNode,
-                            new DiffResultGeoSize(sizeChange.toArray(),
-                                    Arrays.asList(Label.label(LinearRing.class.getName())) // TODO Label list to skip for polygons
-                            ));
                 }
+
+                /*
+                // Check overlapping volume
+                if (matchBbox(leftBBox, rightBBox, precision, config.MATCHER_TOLERANCE_SOLIDS)) {
+                    if (sizeChange.eq(Vector3D.ZERO, precision)) {
+                        // Same orientation + Same position + Same size
+                        logger.debug("Found the best matching candidate for {} with same orientation, same position, and same size",
+                                ClazzUtils.getSimpleClassName(leftRelNode));
+                        return new AbstractMap.SimpleEntry<>(rightRelNode,
+                                new DiffResultGeo(
+                                        SimilarityLevel.SIMILAR_GEOMETRY,
+                                        1,
+                                        List.of(Label.label(MultiSurface.class.getName())),
+                                        null
+                                ));
+                    }
+                } else {
+
+                }
+                */
             }
 
             // Finally, check if candidate has been found
-            if (candidate == null) return new AbstractMap.SimpleEntry<>(null,
-                    new DiffResult(SimilarityLevel.NONE, 0));
-            logger.debug("Found the best matching candidate for {} with translation vector {}",
-                    ClazzUtils.getSimpleClassName(leftRelNode), minTranslation);
-            return new AbstractMap.SimpleEntry<>(candidate,
-                    new DiffResultGeoTranslation(
+            if (candidateTranslationSameSize == null && candidateTranslationResize == null)
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+
+            if (candidateTranslationSameSize != null && candidateTranslationResize != null) {
+                logger.warn("Found multiple best matching candidates for {} with translation {}, " +
+                                "but both with and without resize {}, ignoring this geometry",
+                        ClazzUtils.getSimpleClassName(leftRelNode), minTranslation, minResize);
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
+
+            if (candidateTranslationSameSize != null) {
+                // Same orientation, same size, but with translation
+                logger.debug("Found the best matching candidate for {} with same orientation, same size, but with translation {}",
+                        ClazzUtils.getSimpleClassName(leftRelNode), minTranslation);
+                return new AbstractMap.SimpleEntry<>(candidateTranslationSameSize,
+                        new DiffResultGeoTranslation(
+                                minTranslation.toArray(),
+                                List.of(Label.label(MultiSurface.class.getName())),
+                                Label.label(Polygon.class.getName())
+                        ));
+            }
+
+            // Same orientation, but with translation and resize
+            logger.debug("Found the best matching candidate for {} with same orientation, but with translation {} and resize {}",
+                    ClazzUtils.getSimpleClassName(leftRelNode), minTranslation, minResize);
+            return new AbstractMap.SimpleEntry<>(candidateTranslationResize,
+                    new DiffResultGeoTranslationResize(
                             minTranslation.toArray(),
-                            Arrays.asList(Label.label(LinearRing.class.getName()))) // TODO Label list to skip for polygons
-            );
+                            minResize.toArray(),
+                            List.of(Label.label(MultiSurface.class.getName())),
+                            Label.label(Polygon.class.getName())
+                    ));
 
             // TODO Further checks for rotation, etc. (remember to use continue; to skip other checks below)
         }
@@ -687,7 +703,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                     new DiffResultGeo(
                                             SimilarityLevel.SIMILAR_GEOMETRY,
                                             1,
-                                            Arrays.asList(Label.label(LineString.class.getName())) // TODO Label list to skip for MultiCurves
+                                            Arrays.asList(Label.label(LineString.class.getName())), // TODO Label list to skip for MultiCurves
+                                            null
                                     ));
                         }
                     }
@@ -721,8 +738,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             return new AbstractMap.SimpleEntry<>(candidate,
                     new DiffResultGeoTranslation(
                             minTranslation.toArray(),
-                            Arrays.asList(Label.label(LineString.class.getName()))) // TODO Label list to skip for polygons
-            );
+                            Arrays.asList(Label.label(LineString.class.getName())), // TODO Label list to skip for polygons
+                            null
+                    ));
         }
 
         // TODO Points
@@ -754,7 +772,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResultGeo(
                             SimilarityLevel.SIMILAR_GEOMETRY,
                             minDistance.get(),
-                            null // TODO Label list to skip for points
+                            null, // TODO Label list to skip for points
+                            null
                     ));
         }
 
@@ -826,8 +845,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     .toList();
             // Found one or more exact matching candidates
             if (filteredCandidates.size() >= 1) {
-                logger.debug("Found {} exact candidates for generic attribute {}",
-                        filteredCandidates.size(), leftObj.getName());
+                // logger.debug("Found {} exact candidates for generic attribute {}", filteredCandidates.size(), leftObj.getName());
                 return new AbstractMap.SimpleEntry<>(filteredCandidates.get(0),
                         new DiffResult(SimilarityLevel.EQUIVALENCE, 0));
             }
@@ -840,8 +858,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     })
                     .toList();
             if (filteredNamedCandidates.size() >= 1) {
-                logger.debug("Found {} candidates for generic attribute of the same name {}",
-                        filteredNamedCandidates.size(), leftObj.getName());
+                // logger.debug("Found {} candidates for generic attribute of the same name {}", filteredNamedCandidates.size(), leftObj.getName());
                 return new AbstractMap.SimpleEntry<>(filteredNamedCandidates.get(0),
                         new DiffResult(SimilarityLevel.SAME_LABELS, 0));
             }
@@ -1283,5 +1300,49 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             result.add(Double.parseDouble(list.get(i) + ""));
         }
         return result;
+    }
+
+    // Match two bounding boxes in 3D
+    private boolean matchBbox(
+            double[] bbox1,
+            double[] bbox2,
+            Precision.DoubleEquivalence toleranceLength, // when comparing size length with 0
+            double percentVolPass // matched only if overlapping volume over vol 1 and vol 2 is greater than this
+    ) {
+        if (bbox1 == null || bbox2 == null) return false;
+        if (bbox1.length != 6 || bbox2.length != 6) return false;
+
+        // Volume 1
+        double vol1 = 0;
+        double sizeX1 = bbox1[3] - bbox1[0];
+        double sizeY1 = bbox1[4] - bbox1[1];
+        double sizeZ1 = bbox1[5] - bbox1[2];
+        if (toleranceLength.eq(sizeX1, 0)) vol1 = sizeY1 * sizeZ1;
+        else if (toleranceLength.eq(sizeY1, 0)) vol1 = sizeX1 * sizeZ1;
+        else if (toleranceLength.eq(sizeZ1, 0)) vol1 = sizeX1 * sizeY1;
+        else vol1 = sizeX1 * sizeY1 * sizeZ1;
+
+        // Volume 2
+        double vol2 = 0;
+        double sizeX2 = bbox2[3] - bbox2[0];
+        double sizeY2 = bbox2[4] - bbox2[1];
+        double sizeZ2 = bbox2[5] - bbox2[2];
+        if (toleranceLength.eq(sizeX2, 0)) vol2 = sizeY2 * sizeZ2;
+        else if (toleranceLength.eq(sizeY2, 0)) vol2 = sizeX2 * sizeZ2;
+        else if (toleranceLength.eq(sizeZ2, 0)) vol2 = sizeX2 * sizeY2;
+        else vol2 = sizeX2 * sizeY2 * sizeZ2;
+
+        // Overlapping volume
+        double overlap = 0;
+        double x_overlap = Math.max(0, Math.min(bbox1[3], bbox2[3]) - Math.max(bbox1[0], bbox2[0]));
+        double y_overlap = Math.max(0, Math.min(bbox1[4], bbox2[4]) - Math.max(bbox1[1], bbox2[1]));
+        double z_overlap = Math.max(0, Math.min(bbox1[5], bbox2[5]) - Math.max(bbox1[2], bbox2[2]));
+        if (toleranceLength.eq(x_overlap, 0)) overlap = y_overlap * z_overlap;
+        else if (toleranceLength.eq(y_overlap, 0)) overlap = x_overlap * z_overlap;
+        else if (toleranceLength.eq(z_overlap, 0)) overlap = x_overlap * y_overlap;
+        else overlap = x_overlap * y_overlap * z_overlap;
+
+        // Evaluate
+        return overlap / vol1 > percentVolPass && overlap / vol2 > percentVolPass;
     }
 }

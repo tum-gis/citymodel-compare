@@ -627,7 +627,8 @@ public class Patterns {
                         .toList();
                 if (memoryRels.size() > 1) {
                     throw new RuntimeException("Multiple memory nodes for same next rule node "
-                            + nextRule.getProperty(_RuleNodePropNames.change_type.toString()));
+                            + nextRule.getProperty(_RuleNodePropNames.change_type.toString()) + ", content node"
+                            + nextContent.getElementId());
                 }
                 Node memory;
                 if (memoryRels.isEmpty()) {

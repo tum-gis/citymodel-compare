@@ -68,7 +68,7 @@ public class ChangeUtils {
                 lock.release();
             }
         }
-        logger.debug("Detected {}", changeType.getSimpleName());
+        // logger.debug("Detected {}", changeType.getSimpleName());
     }
 
     private static boolean exists(Class<? extends Change> changeType,

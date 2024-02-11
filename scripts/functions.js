@@ -1,5 +1,5 @@
 // Constant precision
-const PRECISION = 1e-3;
+const PRECISION = 0.010;
 const DATETIME_TOLERANCE = 60000; // 1 minute
 
 function fuzzyEquals(a, b) {

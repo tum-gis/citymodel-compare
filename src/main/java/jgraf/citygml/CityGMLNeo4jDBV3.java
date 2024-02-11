@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     protected final static Logger logger = LoggerFactory.getLogger(CityGMLNeo4jDBV3.class);
@@ -58,29 +59,24 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             }
             dbStats.startTimer();
             CityGMLContext context = CityGMLContext.newInstance();
-            ChunkOptions chunkOptions = ChunkOptions.defaults();
-            chunkOptions.skipCityModel(false);
             CityGMLInputFactory in
-                    = context.createCityGMLInputFactory().withChunking(chunkOptions)
-                    .withReferenceResolver(DefaultReferenceResolver.newInstance());
+                    = context.createCityGMLInputFactory()
+                    .withChunking(ChunkOptions.defaults());
             Path file = Path.of(filePath);
             logger.info("Reading CityGML v3.0 file {} chunk-wise into main memory", filePath);
 
             // Multi-threading
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-            long tlCount = 0;
+            AtomicLong tlCount = new AtomicLong();
             try (CityGMLReader reader = in.createCityGMLReader(file)) {
                 while (reader.hasNext()) {
-                    CityGMLChunk chunk = reader.nextChunk();
-                    tlCount++;
-
-                    long finalTlCount = tlCount;
                     executorService.submit((Callable<Void>) () -> {
-                        AbstractFeature feature = chunk.build();
+                        AbstractFeature feature = reader.next();
+                        tlCount.getAndIncrement();
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(feature,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
                         partitionMapPostProcessing(feature, graphRef, partitionIndex, connectToRoot);
-                        logger.debug("Mapped {} top-level features", finalTlCount);
+                        logger.info("Mapped {} top-level features", tlCount.get());
 
                         if (feature instanceof CityModel) {
                             if (cityModelRef[0] != null)

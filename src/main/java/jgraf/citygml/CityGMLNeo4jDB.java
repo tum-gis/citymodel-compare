@@ -26,9 +26,11 @@ import org.citygml4j.xml.io.reader.CityGMLReadException;
 import org.citygml4j.xml.io.reader.CityGMLReader;
 import org.citygml4j.xml.io.reader.FeatureReadMode;
 import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.traversal.Evaluation;
+import org.neo4j.graphdb.traversal.Evaluators;
+import org.neo4j.graphdb.traversal.Traverser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import rx.observables.BlockingObservable;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,9 +45,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -146,6 +146,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
         // Set provides constant time for adds and removes of huge lists
         Set<Neo4jGraphRef> cityModelRefs = Collections.synchronizedSet(new HashSet<>());
+        AtomicLong tlCountDir = new AtomicLong(0);
         try (Stream<Path> st = Files.walk(path)) {
             st.filter(Files::isRegularFile).parallel().forEach(file -> {
                 // One file one thread
@@ -157,21 +158,22 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         in.setProperty(CityGMLInputFactory.FEATURE_READ_MODE, FeatureReadMode.SPLIT_PER_COLLECTION_MEMBER);
                         try (CityGMLReader reader = in.createCityGMLReader(file.toFile())) {
                             logger.info("Reading tiled CityGML v2.0 file {} chunk-wise into main memory", file.toString());
-                            long tlCount = 0;
+                            long tlCountFile = 0;
                             while (reader.hasNext()) {
                                 CityGML chunk = reader.nextFeature();
-                                tlCount++;
+                                tlCountFile++;
 
                                 Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(chunk,
                                         AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
 
                                 partitionMapPostProcessing(chunk, graphRef, partitionIndex, false);
-                                logger.debug("Mapped {} top-level features", tlCount);
+                                logger.debug("Mapped {} top-level features", tlCountFile);
 
                                 if (chunk instanceof CityModel) {
                                     cityModelRefs.add(graphRef);
                                 }
                             }
+                            tlCountDir.addAndGet(tlCountFile);
                         }
                     } catch (CityGMLBuilderException | CityGMLReadException e) {
                         throw new RuntimeException(e);
@@ -194,6 +196,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             logger.info("All threads finished");
         }
+        logger.info("Mapped {} top-level features from directory {}", tlCountDir, path.toString());
         dbStats.stopTimer("Map all input tiled files in " + path.toString());
 
         dbStats.startTimer();
@@ -562,7 +565,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 .collect(Collectors.toSet());
         if (!leftLabels.equals(rightLabels))
             throw new RuntimeException("Could not diff nodes of different labels " + leftLabels + " and " + rightLabels);
-        // logger.debug("Matching {}", leftLabels);
 
         AtomicBoolean diffFound = new AtomicBoolean(false);
 
@@ -634,7 +636,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 // Skip if label matches
                 for (Label l : skipLabels) {
                     if (leftRelNode.hasLabel(l)) {
-                        logger.debug("Skipped label {}", l.name());
+                        // logger.debug("As instructed, skipped label {}", l.name());
                         return;
                     }
                 }
@@ -659,10 +661,23 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         );
                         if (tmpDiffFound) diffFound.set(true);
                     }
+                    case SIMILAR_GEOMETRY_TRANSLATION_SIZE_CHANGE -> {
+                        // Found a geometric match but translated by a vector != 0 and with a different size
+                        // First create an interpretation node for later analyses
+                        attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
+                        // Then treat it as usual matched geometry
+                        rightMatchedNodes.add(rightRelNode.getElementId());
+                        boolean tmpDiffFound = diff(
+                                tx, leftRelNode, rightRelNode, set,
+                                GraphUtils.listAll(skipProps, null),
+                                GraphUtils.listAll(skipLabels, ((DiffResultGeo) diffResult).getSkip())
+                        );
+                        if (tmpDiffFound) diffFound.set(true);
+                    }
                     case SIMILAR_GEOMETRY_TRANSLATION -> {
                         // Found a geometric match but translated by a vector != 0
                         // First create an interpretation node for later analyses
-                        Patterns.markTranslation(tx, leftRelNode, rightRelNode, ((DiffResultGeoTranslation) diffResult).getVector(), config.MATCHER_TOLERANCE_LENGTHS);
+                        attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
                         // Then treat it as usual matched geometry
                         rightMatchedNodes.add(rightRelNode.getElementId());
                         boolean tmpDiffFound = diff(
@@ -675,7 +690,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     case SIMILAR_GEOMETRY_SIZE_CHANGE -> {
                         // Found a geometric match with a different size
                         // First create an interpretation node for later analyses
-                        Patterns.markSizeChange(tx, leftRelNode, rightRelNode, ((DiffResultGeoSize) diffResult).getDelta(), config.MATCHER_TOLERANCE_LENGTHS);
+                        attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
                         // Then treat it as usual matched geometry
                         rightMatchedNodes.add(rightRelNode.getElementId());
                         boolean tmpDiffFound = diff(
@@ -780,6 +795,82 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 }
             }
         }
+    }
+
+    private void attachGeomChanges(Transaction tx, DiffResult diffResult, Node leftRelNode, Node rightRelNode) {
+        if (diffResult instanceof DiffResultGeoSize res) {
+            // Found a geometric match with a different size
+            Label anchor = res.getAnchor();
+            if (anchor != null) {
+                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
+                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
+                Patterns.markSizeChange(
+                        tx,
+                        leftAnchorNode,
+                        rightAnchorNode,
+                        ((DiffResultGeoSize) diffResult).getDelta(),
+                        config.MATCHER_TOLERANCE_LENGTHS
+                );
+            }
+        } else if (diffResult instanceof DiffResultGeoTranslation res) {
+            // Found a geometric match but translated by a vector != 0
+            Label anchor = res.getAnchor();
+            if (anchor != null) {
+                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
+                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
+                Patterns.markTranslation(
+                        tx,
+                        leftAnchorNode,
+                        rightAnchorNode,
+                        ((DiffResultGeoTranslation) diffResult).getVector(),
+                        config.MATCHER_TOLERANCE_LENGTHS
+                );
+            }
+        } else if (diffResult instanceof DiffResultGeoTranslationResize res) {
+            // Found a geometric match but translated by a vector != 0 and with a different size
+            Label anchor = res.getAnchor();
+            if (anchor != null) {
+                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
+                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
+                Patterns.markTranslation(
+                        tx,
+                        leftAnchorNode,
+                        rightAnchorNode,
+                        ((DiffResultGeoTranslationResize) diffResult).getVector(),
+                        config.MATCHER_TOLERANCE_LENGTHS
+                );
+                Patterns.markSizeChange(
+                        tx,
+                        leftAnchorNode,
+                        rightAnchorNode,
+                        ((DiffResultGeoTranslationResize) diffResult).getDelta(),
+                        config.MATCHER_TOLERANCE_LENGTHS
+                );
+            }
+        }
+    }
+
+    private Node getAnchorNode(Transaction tx, Node node, Label anchor) {
+        Traverser traverser = tx.traversalDescription()
+                .depthFirst()
+                .expand(PathExpanders.forDirection(Direction.OUTGOING))
+                .evaluator(Evaluators.fromDepth(0))
+                .evaluator(path -> {
+                    if (path.endNode().hasLabel(anchor))
+                        return Evaluation.INCLUDE_AND_PRUNE;
+                    return Evaluation.EXCLUDE_AND_CONTINUE;
+                })
+                .traverse(node);
+        List<Node> anchorNodes = new ArrayList<>();
+        traverser.forEach(path -> anchorNodes.add(path.endNode()));
+        if (anchorNodes.isEmpty()) {
+            logger.error("Found no anchor node {}, attaching to source node, where change occurred", anchor.name());
+            return node;
+        }
+        if (anchorNodes.size() > 1) {
+            logger.error("Found more than one anchor node {}, selecting one", anchor.name());
+        }
+        return anchorNodes.get(0);
     }
 
     protected abstract Map.Entry<Node, DiffResult> findBest(Transaction tx, Relationship leftRel, Node rightParentNode);

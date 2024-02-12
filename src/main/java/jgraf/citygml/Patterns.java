@@ -652,10 +652,7 @@ public class Patterns {
                     }
 
                     // Connect memory to next content node
-                    Lock lockNextContent = tx.acquireWriteLock(nextContent);
                     memory.createRelationshipTo(nextContent, _RuleRelTypes.SAVED_FOR);
-                    lockNextContent.release();
-
                     lockMemory.release();
                 } else {
                     // Fetch memory node for this next rule node
@@ -855,9 +852,10 @@ public class Patterns {
                 lockNextChange.release();
 
                 // Add this next change to the queue
-                // Only if the next content node is NOT a top-level feature
+                // Only if the next content node is NOT a top-level feature or its rule node has directive to calculate scope
                 // --> Top-level features are processed in phase 2
-                if (!nextContent.hasLabel(Label.label(Building.class.getName()))) {
+                if (!nextContent.hasLabel(Label.label(Building.class.getName()))
+                        || !nextRule.hasProperty(_RuleNodePropNames.calc_scope.toString())) {
                     // TODO Extend for CityGML v3, and all other top-level features
                     queue.add(nextChange);
                 }

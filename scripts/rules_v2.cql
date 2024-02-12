@@ -69,20 +69,20 @@ MERGE (updated_prop)-[:AGGREGATED_TO {
 //})
 
 // Rules for global updated buildings (with both updated IDs and creation dates)
-MERGE (global_updated_building_ids)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  name:              'rule_ids', // TODO
-  weight:            1
-}]->(global_updated_buildings:RULE {
-  change_type: 'GlobalUpdatedBuildings',
-  join:        'spatialEquals(rule_ids.scope.spatial, rule_creation_dates.scope.spatial)', // TODO
-  tags:        'update;thematic;toplevel;scope'
-})
-MERGE (global_updated_building_creation_dates)-[:AGGREGATED_TO {
-  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
-  name:              'rule_creation_dates',
-  weight:            1
-}]->(global_updated_buildings)
+//MERGE (global_updated_building_ids)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  name:              'rule_ids', // TODO
+//  weight:            1
+//}]->(global_updated_buildings:RULE {
+//  change_type: 'GlobalUpdatedBuildings',
+//  join:        'spatialEquals(rule_ids.scope.spatial, rule_creation_dates.scope.spatial)', // TODO
+//  tags:        'update;thematic;toplevel;scope'
+//})
+//MERGE (global_updated_building_creation_dates)-[:AGGREGATED_TO {
+//  next_content_type: 'org.citygml4j.model.citygml.core.CityModel',
+//  name:              'rule_creation_dates',
+//  weight:            1
+//}]->(global_updated_buildings)
 // TODO This means that both rules must satisfy, any other changes will further increase the certainty, but are optional
 
 // TODO Rules for updated building creationDates along a street
@@ -641,46 +641,46 @@ MERGE (size_changed_building_walls_no_bparts)-[:AGGREGATED_TO {
 //})
 
 // Rules for raised building part roofs
-//MERGE (updated_measured_height)-[:AGGREGATED_TO {
-//  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-//  search_length:     1,
-//  propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE',
-//  weight:            1
-//}]->(updated_building_part_measured_height:RULE {
-//  change_type: 'UpdatedBuildingPartMeasuredHeight',
-//  tags:        'update;thematic;measurement;vertical'
-//})-[:AGGREGATED_TO {
-//  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-//  name:              'rule_measured_height',
-//  conditions:        'RIGHT_PROPERTY_VALUE - LEFT_PROPERTY_VALUE > 0',
-//  propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE', // TODO Option to rename properties (in case edges have the same named properties)
-//  weight:            '1'
-//}]->(raised_building_part_roofs:RULE {
-//  change_type: 'RaisedBuildingPartRoofs',
-//  join:        'fuzzyEquals(parseFloat(rule_measured_height.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))',
-//  tags:        'update;thematic;measurement;geometric;vertical'
-//})
-//MERGE (translated_building_part_roofs)-[:AGGREGATED_TO {
-//  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-//  name:              'rule_translated_roofs',
-//  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
-//  propagate:         'x;y;z',
-//  weight:            '1'
-//}]->(raised_building_part_roofs)
-//MERGE (translated_building_part_grounds)-[:AGGREGATED_TO {
-//  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-//  name:              'rule_translated_grounds',
-//  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
-//  propagate:         'x;y;z',
-//  weight:            '1'
-//}]->(raised_building_part_roofs)
-//MERGE (size_changed_building_part_walls)-[:AGGREGATED_TO {
-//  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-//  name:              'rule_size_changed_walls',
-//  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
-//  propagate:         'x;y;z',
-//  weight:            '1'
-//}]->(raised_building_part_roofs)
+MERGE (updated_measured_height)-[:AGGREGATED_TO {
+  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
+  search_length:     1,
+  propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE',
+  weight:            1
+}]->(updated_building_part_measured_height:RULE {
+  change_type: 'UpdatedBuildingPartMeasuredHeight',
+  tags:        'update;thematic;measurement;vertical'
+})-[:AGGREGATED_TO {
+  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
+  name:              'rule_measured_height',
+  conditions:        'RIGHT_PROPERTY_VALUE - LEFT_PROPERTY_VALUE > 0',
+  propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE', // TODO Option to rename properties (in case edges have the same named properties)
+  weight:            '1'
+}]->(raised_building_part_roofs:RULE {
+  change_type: 'RaisedBuildingPartRoofs',
+  join:        'fuzzyEquals(parseFloat(rule_measured_height.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))',
+  tags:        'update;thematic;measurement;geometric;vertical'
+})
+MERGE (translated_building_part_roofs)-[:AGGREGATED_TO {
+  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
+  name:              'rule_translated_roofs',
+  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
+  propagate:         'x;y;z',
+  weight:            '1'
+}]->(raised_building_part_roofs)
+MERGE (translated_building_part_grounds)-[:AGGREGATED_TO {
+  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
+  name:              'rule_translated_grounds',
+  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
+  propagate:         'x;y;z',
+  weight:            '1'
+}]->(raised_building_part_roofs)
+MERGE (size_changed_building_part_walls)-[:AGGREGATED_TO {
+  next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
+  name:              'rule_size_changed_walls',
+  conditions:        'fuzzyEquals(x, 0) && fuzzyEquals(y, 0)',
+  propagate:         'x;y;z',
+  weight:            '1'
+}]->(raised_building_part_roofs)
 
 }
 

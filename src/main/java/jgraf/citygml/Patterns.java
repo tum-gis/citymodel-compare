@@ -1110,47 +1110,34 @@ public class Patterns {
         node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
     }
 
-    public static void markGeoChange(Transaction tx, Class<?> changeClass, Node leftNode, Node rightNode, double[] vector, double precision) {
-        // Do not create a pattern node if an exact node like it already exists
-        if (geoChangeExists(leftNode, rightNode, vector, precision)) return;
+    public static void markGeoChange(Transaction tx, Node leftNode, Node rightNode, Map<Class<?>, double[]> changes) {
+        Lock leftLock = tx.acquireReadLock(leftNode);
+        Lock rightLock = tx.acquireReadLock(rightNode);
 
-        Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(changeClass.getName()));
-        Lock leftLock = tx.acquireWriteLock(leftNode);
-        node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
-        leftLock.release();
-        Lock rightLock = tx.acquireWriteLock(rightNode);
-        node.createRelationshipTo(rightNode, AuxEdgeTypes.RIGHT_NODE);
+        changes.forEach((changeClass, vector) -> {
+            // Do not create a pattern node if an exact node like it already exists
+            if (geoChangeExists(leftNode, rightNode, changeClass)) return;
+
+            Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(changeClass.getName()));
+            node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
+            node.createRelationshipTo(rightNode, AuxEdgeTypes.RIGHT_NODE);
+            node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
+            node.setProperty(_ChangePropNames.x.toString(), vector[0]);
+            node.setProperty(_ChangePropNames.y.toString(), vector[1]);
+            node.setProperty(_ChangePropNames.z.toString(), vector.length == 3 ? vector[2] : "");
+        });
+
         rightLock.release();
-        node.setProperty(_ChangePropNames.change_type.toString(), changeClass.getSimpleName());
-        node.setProperty(_ChangePropNames.x.toString(), vector[0]);
-        node.setProperty(_ChangePropNames.y.toString(), vector[1]);
-        node.setProperty(_ChangePropNames.z.toString(), vector.length == 3 ? vector[2] : "");
+        leftLock.release();
     }
 
-    public static void markTranslation(Transaction tx, Node leftNode, Node rightNode, double[] vector, double precision) {
-        markGeoChange(tx, TranslationChange.class, leftNode, rightNode, vector, precision);
-    }
-
-    public static void markSizeChange(Transaction tx, Node leftNode, Node rightNode, double[] vector, double precision) {
-        markGeoChange(tx, SizeChange.class, leftNode, rightNode, vector, precision);
-    }
-
-    private static boolean geoChangeExists(Node leftNode, Node rightNode, double[] vector, double precision) {
-        if (!leftNode.hasRelationship(Direction.INCOMING, AuxEdgeTypes.TANDEM)) return false;
-        if (!rightNode.hasRelationship(Direction.INCOMING, AuxEdgeTypes.RIGHT_NODE)) return false;
-        // There should exist only one pattern node between leftNode and rightNode with exact vector value
-        Node pattern = leftNode.getSingleRelationship(AuxEdgeTypes.TANDEM, Direction.INCOMING).getStartNode();
-        if (!pattern.hasLabel(Label.label(TranslationChange.class.getName()))) return false;
-        if (!pattern.hasProperty(_ChangePropNames.x.toString())) return false;
-        if (Math.abs((double) pattern.getProperty(_ChangePropNames.x.toString()) - vector[0]) > precision)
-            return false;
-        if (!pattern.hasProperty(_ChangePropNames.y.toString())) return false;
-        if (Math.abs((double) pattern.getProperty(_ChangePropNames.y.toString()) - vector[1]) > precision)
-            return false;
-        if (!pattern.hasProperty(_ChangePropNames.z.toString())) return false;
-        if (Math.abs((double) pattern.getProperty(_ChangePropNames.z.toString()) - vector[2]) > precision)
-            return false;
-        return true;
+    private static boolean geoChangeExists(Node leftNode, Node rightNode, Class<?> changeClass) {
+        // There should exist only one pattern node between leftNode and rightNode with the change class
+        boolean leftAvailable = leftNode.getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM).stream()
+                .anyMatch(r -> r.getStartNode().hasLabel(Label.label(changeClass.getName())));
+        boolean rightAvailable = rightNode.getRelationships(Direction.INCOMING, AuxEdgeTypes.RIGHT_NODE).stream()
+                .anyMatch(r -> r.getStartNode().hasLabel(Label.label(changeClass.getName())));
+        return leftAvailable && rightAvailable;
     }
 
     // Return a translation vector if there is a translation, else null

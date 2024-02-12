@@ -798,60 +798,28 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     private void attachGeomChanges(Transaction tx, DiffResult diffResult, Node leftRelNode, Node rightRelNode) {
-        if (diffResult instanceof DiffResultGeoSize res) {
-            // Found a geometric match with a different size
-            Label anchor = res.getAnchor();
-            if (anchor != null) {
-                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
-                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
-                Patterns.markSizeChange(
-                        tx,
-                        leftAnchorNode,
-                        rightAnchorNode,
-                        ((DiffResultGeoSize) diffResult).getDelta(),
-                        config.MATCHER_TOLERANCE_LENGTHS
-                );
-            }
-        } else if (diffResult instanceof DiffResultGeoTranslation res) {
-            // Found a geometric match but translated by a vector != 0
-            Label anchor = res.getAnchor();
-            if (anchor != null) {
-                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
-                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
-                Patterns.markTranslation(
-                        tx,
-                        leftAnchorNode,
-                        rightAnchorNode,
-                        ((DiffResultGeoTranslation) diffResult).getVector(),
-                        config.MATCHER_TOLERANCE_LENGTHS
-                );
-            }
-        } else if (diffResult instanceof DiffResultGeoTranslationResize res) {
-            // Found a geometric match but translated by a vector != 0 and with a different size
-            Label anchor = res.getAnchor();
-            if (anchor != null) {
-                Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
-                Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
-                Patterns.markTranslation(
-                        tx,
-                        leftAnchorNode,
-                        rightAnchorNode,
-                        ((DiffResultGeoTranslationResize) diffResult).getVector(),
-                        config.MATCHER_TOLERANCE_LENGTHS
-                );
-                Patterns.markSizeChange(
-                        tx,
-                        leftAnchorNode,
-                        rightAnchorNode,
-                        ((DiffResultGeoTranslationResize) diffResult).getDelta(),
-                        config.MATCHER_TOLERANCE_LENGTHS
-                );
+        if (!(diffResult instanceof DiffResultGeo res)) return;
+        Label anchor = res.getAnchor();
+        if (anchor != null) {
+            Node leftAnchorNode = getAnchorNode(tx, leftRelNode, anchor);
+            Node rightAnchorNode = getAnchorNode(tx, rightRelNode, anchor);
+            if (diffResult instanceof DiffResultGeoSize resSize) {
+                // Found a geometric match with a different size
+                Patterns.markGeoChange(tx, leftAnchorNode, rightAnchorNode, Map.of(SizeChange.class, resSize.getDelta()));
+            } else if (diffResult instanceof DiffResultGeoTranslation resTranslation) {
+                // Found a geometric match but translated by a vector != 0
+                Patterns.markGeoChange(tx, leftAnchorNode, rightAnchorNode, Map.of(TranslationChange.class, resTranslation.getVector()));
+            } else if (diffResult instanceof DiffResultGeoTranslationResize resSizeTranslation) {
+                // Found a geometric match but translated by a vector != 0 and with a different size
+                Patterns.markGeoChange(tx, leftAnchorNode, rightAnchorNode, Map.of(
+                        SizeChange.class, resSizeTranslation.getDelta(),
+                        TranslationChange.class, resSizeTranslation.getVector()
+                ));
             }
         }
     }
 
     private Node getAnchorNode(Transaction tx, Node node, Label anchor) {
-        // Lock lock = tx.acquireWriteLock(node);
         Traverser traverser = tx.traversalDescription()
                 .depthFirst()
                 .expand(PathExpanders.forDirection(Direction.OUTGOING))
@@ -864,7 +832,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 .traverse(node);
         List<Node> anchorNodes = new ArrayList<>();
         traverser.forEach(path -> anchorNodes.add(path.endNode()));
-        // lock.release();
         if (anchorNodes.isEmpty()) {
             logger.error("Found no anchor node {}, attaching to source node, where change occurred", anchor.name());
             return node;

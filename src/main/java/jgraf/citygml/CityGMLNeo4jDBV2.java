@@ -210,12 +210,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     tmpBBox[3], tmpBBox[4]
             );
             double leftArea = leftRectangle.area();
-            double leftWidth = leftRectangle.x2() - leftRectangle.x1();
-            double leftHeight = leftRectangle.y2() - leftRectangle.y1();
-            AtomicReference<Double> maxOverlapRatio = new AtomicReference<>(config.MATCHER_TOLERANCE_SURFACES);
-            AtomicReference<Double> minDistance = new AtomicReference<>(config.MATCHER_TRANSLATION_DISTANCE);
-            AtomicReference<Neo4jGraphRef> rightRefOverlap = new AtomicReference<>(null);
-            AtomicReference<Neo4jGraphRef> rightRefDistance = new AtomicReference<>(null);
+            AtomicReference<Double> maxOverlapRatioNoDistance = new AtomicReference<>(Double.MIN_VALUE);
+            AtomicReference<Double> maxOverlapRatioWithDistance = new AtomicReference<>(Double.MIN_VALUE);
+            AtomicReference<Neo4jGraphRef> candidateOverlapNoDistance = new AtomicReference<>(null);
+            AtomicReference<Neo4jGraphRef> candidateOverlapWithDistance = new AtomicReference<>(null);
             rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
                 Rectangle rightRectangle = (Rectangle) entry.geometry();
 
@@ -223,38 +221,40 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 double overlap = leftRectangle.intersectionArea(rightRectangle);
                 double rightArea = rightRectangle.area();
                 double overlapRatio = overlap / Math.sqrt(leftArea * rightArea);
-                if (overlapRatio > maxOverlapRatio.get()) {
+                if (overlapRatio > maxOverlapRatioNoDistance.get()) {
                     // Choose only top-level feature with the biggest overlapping footprint area
-                    maxOverlapRatio.set(overlapRatio);
-                    rightRefOverlap.set(entry.value());
+                    maxOverlapRatioNoDistance.set(overlapRatio);
+                    candidateOverlapNoDistance.set(entry.value());
                 } else {
                     // Overlap is too small but may still be relevant in case of translation
-                    // Also check for translation of same sized bboxes
-                    double rightWidth = rightRectangle.x2() - rightRectangle.x1();
-                    double rightHeight = rightRectangle.y2() - rightRectangle.y1();
-                    if (precision.eq(leftWidth, rightWidth) && precision.eq(leftHeight, rightHeight)) {
-                        double distance = leftRectangle.distance(rightRectangle);
-                        if (distance < minDistance.get()) {
-                            // Choose only top-level feature with the smallest distance between bboxes
-                            // (in case of translation, since overlapping is too small)
-                            minDistance.set(distance);
-                            rightRefDistance.set(entry.value());
-                        }
+                    double distance = rightRectangle.distance(leftRectangle);
+                    Rectangle movedLeftRectangle = Geometries.rectangle(
+                            leftRectangle.x1() + distance, leftRectangle.y1() + distance,
+                            leftRectangle.x2() + distance, leftRectangle.y2() + distance
+                    );
+
+                    // Check for overlapping
+                    double movedOverlap = movedLeftRectangle.intersectionArea(rightRectangle);
+                    double movedOverlapRatio = movedOverlap / Math.sqrt(leftArea * rightArea);
+                    if (movedOverlapRatio > maxOverlapRatioWithDistance.get()) {
+                        // Choose only top-level feature with the biggest overlapping footprint area
+                        maxOverlapRatioWithDistance.set(movedOverlapRatio);
+                        candidateOverlapWithDistance.set(entry.value());
                     }
                 }
             });
-            if (rightRefOverlap.get() != null) {
+            if (candidateOverlapNoDistance.get() != null) {
                 logger.debug("Found the best matching candidate for {} with {}% >= {}% overlapping area using RTree",
                         ClazzUtils.getSimpleClassName(leftTLNode),
-                        Math.round(maxOverlapRatio.get() * 100),
+                        Math.round(maxOverlapRatioNoDistance.get() * 100),
                         Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
-                Node rightTLNode = rightRefOverlap.get().getRepresentationNode(tx);
+                Node rightTLNode = candidateOverlapNoDistance.get().getRepresentationNode(tx);
                 // Return parent node
                 return new AbstractMap.SimpleEntry<>(rightTLNode.getSingleRelationship(
                         EdgeTypes.object, Direction.INCOMING).getStartNode(),
                         new DiffResultGeo(
                                 SimilarityLevel.SIMILAR_GEOMETRY,
-                                maxOverlapRatio.get(),
+                                maxOverlapRatioNoDistance.get(),
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
@@ -262,19 +262,18 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 null
                         ));
             }
-            if (rightRefDistance.get() != null) {
-                logger.debug("Found the best matching candidate for {} with min distance {} <= {} allowed threshold",
+            if (candidateOverlapWithDistance.get() != null) {
+                logger.debug("Found the best matching candidate for {} with {}% >= {}% overlapping area (with translation) using RTree",
                         ClazzUtils.getSimpleClassName(leftTLNode),
-                        Math.round(minDistance.get()),
-                        Math.round(config.MATCHER_TRANSLATION_DISTANCE));
-                Node rightTLNode = rightRefDistance.get().getRepresentationNode(tx);
+                        Math.round(maxOverlapRatioWithDistance.get() * 100),
+                        Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
+                Node rightTLNode = candidateOverlapWithDistance.get().getRepresentationNode(tx);
                 // Return parent node
                 return new AbstractMap.SimpleEntry<>(rightTLNode.getSingleRelationship(
                         EdgeTypes.object, Direction.INCOMING).getStartNode(),
-                        // TODO Set to SIMILAR_GEOMETRY_TRANSLATED instead?
                         new DiffResultGeo(
                                 SimilarityLevel.SIMILAR_GEOMETRY,
-                                maxOverlapRatio.get(),
+                                maxOverlapRatioWithDistance.get(),
                                 // Most Solids are defined by using XLinks
                                 // Do not match Solids (to avoid rematching their boundary surfaces)
                                 // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
@@ -282,6 +281,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 null
                         ));
             }
+
             // Check for ObjectSplit changes (whether this old top-level feature has been split)
             Map<Neo4jGraphRef, Rectangle> partCandidates = new HashMap<>();
             rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {

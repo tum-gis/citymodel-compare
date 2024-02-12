@@ -428,7 +428,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         final long NR_OF_TASKS = leftIdList.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
 
-        leftIdList.forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
+        leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
                 Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
                 Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
@@ -495,7 +495,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             String finalLeftListNodeId1 = leftListNodeId;
             String finalRightListNodeId1 = rightListNodeId;
-            rightBatches.forEach(batch -> es.submit((Callable<Void>) () -> {
+            rightBatches.parallelStream().forEach(batch -> es.submit((Callable<Void>) () -> {
                 try (Transaction tx = graphDb.beginTx()) {
                     Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId1);
                     Node rightListNode = tx.getNodeByElementId(finalRightListNodeId1);

@@ -29,6 +29,7 @@ import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -484,5 +485,18 @@ public abstract class Neo4jDB implements GraphDB {
 
     public Neo4jGraphRef getRootMatcherRef() {
         return ROOT_MATCHER;
+    }
+
+    public static void finishThreads(ExecutorService executorService, long seconds) {
+        logger.info("Waiting for all threads to finish");
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(seconds, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+        }
+        logger.info("All threads finished");
     }
 }

@@ -2,12 +2,15 @@ package jgraf.citygml;
 
 
 import com.github.davidmoten.rtree.RTree;
+import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Geometry;
+import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.core.GraphRef;
 import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.diff.*;
 import jgraf.neo4j.factory.*;
+import jgraf.utils.BatchUtils;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
@@ -103,7 +106,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
             logger.debug("Connected a city model to the database");
         } catch (Exception e) {
-            logger.error(e.getMessage() + "A\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + " (A)\n" + Arrays.toString(e.getStackTrace()));
         }
     }
 
@@ -228,7 +231,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             tx.commit();
         } catch (Exception e) {
-            logger.error(e.getMessage() + "B\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + " (B)\n" + Arrays.toString(e.getStackTrace()));
         }
         dbStats.stopTimer("Merge all CityModel objects to one [" + partitionIndex + "]");
 
@@ -243,11 +246,10 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         List<String> nodeIds = Collections.synchronizedList(new ArrayList<>());
 
         // Store all node IDs in a list first
-        ExecutorService finalExecutorService = executorService;
         mappedClassesSaved.stream()
                 .filter(clazz -> ClazzUtils.isSubclass(clazz, hrefClasses))
                 .parallel()
-                .forEach(hrefClass -> finalExecutorService.submit((Callable<Void>) () -> {
+                .forEach(hrefClass -> executorService.submit((Callable<Void>) () -> {
                     try (Transaction tx = graphDb.beginTx()) {
                         logger.info("Collecting node index {}", hrefClass.getName());
                         tx.findNodes(Label.label(hrefClass.getName())).stream()
@@ -263,16 +265,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     }
                     return null;
                 }));
-        logger.info("Waiting for all threads to finish");
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-        }
-        logger.info("All threads finished");
+        Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
 
         // Batch transactions
         List<List<String>> batches = new ArrayList<>();
@@ -321,16 +314,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             }
             return null;
         }));
-        logger.info("Waiting for all threads to finish");
-        esBatch.shutdown();
-        try {
-            if (!esBatch.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                esBatch.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            esBatch.shutdownNow();
-        }
-        logger.info("All threads finished");
+        Neo4jDB.finishThreads(esBatch, config.MAPPER_CONCURRENT_TIMEOUT);
 
         logger.info("-->| Resolved XLinks");
     }
@@ -396,10 +380,13 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
         // Preparations
         AtomicBoolean diffFound = new AtomicBoolean(false);
-        String leftListNodeId = null;
-        String rightListNodeId = null;
-        List<String> leftIdList = Collections.synchronizedList(new ArrayList<>());
-        List<String> rightIdList = Collections.synchronizedList(new ArrayList<>());
+        // Array top-level nodes
+        String leftCOMListID = null;
+        String rightCOMListID = null;
+        // City object member IDs
+        List<String> leftCOMIDs = Collections.synchronizedList(new ArrayList<>());
+        List<String> rightCOMIDs = Collections.synchronizedList(new ArrayList<>());
+        List<String> delLeftCOMIDs = Collections.synchronizedList(new ArrayList<>());
         try (Transaction tx = graphDb.beginTx()) {
             Node rootMapperNode = ROOT_MAPPER.getRepresentationNode(tx);
             Node leftCityModelNode = GraphUtils.getCollectionMemberNode(rootMapperNode, leftPartitionIndex);
@@ -407,126 +394,181 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             if (leftCityModelNode == null || rightCityModelNode == null)
                 throw new RuntimeException("Null city model node");
 
-            Node leftListNode = getTopLevelListNode(leftCityModelNode);
-            Node rightListNode = getTopLevelListNode(rightCityModelNode);
+            Node leftCOMListNode = getTopLevelListNode(leftCityModelNode);
+            Node rightCOMListNode = getTopLevelListNode(rightCityModelNode);
 
-            leftListNodeId = leftListNode.getElementId();
-            rightListNodeId = rightListNode.getElementId();
+            leftCOMListID = leftCOMListNode.getElementId();
+            rightCOMListID = rightCOMListNode.getElementId();
 
-            leftListNode.getRelationships(Direction.OUTGOING).forEach(r -> leftIdList.add(r.getEndNode().getElementId()));
-            rightListNode.getRelationships(Direction.OUTGOING).forEach(r -> rightIdList.add(r.getEndNode().getElementId()));
+            leftCOMListNode.getRelationships(Direction.OUTGOING).forEach(r -> leftCOMIDs.add(r.getEndNode().getElementId()));
+            rightCOMListNode.getRelationships(Direction.OUTGOING).forEach(r -> rightCOMIDs.add(r.getEndNode().getElementId()));
 
             tx.commit();
         } catch (Exception e) {
-            logger.error(e.getMessage() + "C\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + " (C)\n" + Arrays.toString(e.getStackTrace()));
         }
 
-        // Multi-threading
+        // Multi-threaded matching
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        String finalLeftListNodeId = leftListNodeId;
-        String finalRightListNodeId = rightListNodeId;
-        final long NR_OF_TASKS = leftIdList.size();
+        String tmpLeftCOMListID = leftCOMListID;
+        String tmpRightCOMListID = rightCOMListID;
+        final long NR_OF_TASKS = leftCOMIDs.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
-
-        leftIdList.parallelStream().forEach(leftRelNodeId -> executorService.submit((Callable<Void>) () -> {
+        leftCOMIDs.parallelStream().forEach(leftCOMID -> executorService.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
-                Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId);
-                Node rightListNode = tx.getNodeByElementId(finalRightListNodeId);
+                Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
+                Node leftCOMNode = tx.getNodeByElementId(leftCOMID);
+                Relationship leftRel = leftCOMNode.getRelationships(Direction.INCOMING).stream()
+                        .filter(r -> r.getStartNode().getElementId().equals(tmpLeftCOMListID))
+                        .collect(Collectors.toSet()).iterator().next(); // Relationship ARRAY_MEMBER
 
-                Node leftRelNode = tx.getNodeByElementId(leftRelNodeId);
-                Relationship leftRel = leftRelNode.getRelationships(Direction.INCOMING).stream()
-                        .filter(r -> r.getStartNode().getElementId().equals(finalLeftListNodeId))
-                        .collect(Collectors.toSet()).iterator().next();
+                // Skip candidates that are already taken from the list
+                PriorityQueue<Map.Entry<String, Double>> maxHeap = findBestTopLevel(tx, leftRel, rightCOMListNode);
+                Map.Entry<String, Double> candidateEntry = null;
+                synchronized (rightCOMIDs) {
+                    while (!maxHeap.isEmpty()) {
+                        Map.Entry<String, Double> tmp = maxHeap.poll();
+                        if (rightCOMIDs.contains(tmp.getKey())) {
+                            candidateEntry = tmp;
+                            rightCOMIDs.remove(tmp.getKey());
+                            break;
+                        }
+                    }
+                }
 
-                Map.Entry<Node, DiffResult> resultEntry = findBest(tx, leftRel, rightListNode);
-                Node rightRelNode = resultEntry.getKey();
-                DiffResult diffResult = resultEntry.getValue();
-                if (diffResult.getLevel() == SimilarityLevel.SIMILAR_GEOMETRY) {
-                    // Found geometric matched top-level
-                    rightIdList.remove(rightRelNode.getElementId());
-                    boolean tmpDiffFound = diff(tx, leftRelNode, rightRelNode, true,
-                            null, ((DiffResultGeo) diffResult).getSkip());
+                // Handle the best match
+                if (candidateEntry != null) {
+                    logger.debug("Found best match for {} with overlap value {}", leftCOMNode, candidateEntry.getValue());
+                    Node rightCOMNode = tx.getNodeByElementId(candidateEntry.getKey());
+                    boolean tmpDiffFound = diff(tx, leftCOMNode, rightCOMNode,
+                            true, null, skipLabelsForTopLevel());
                     if (tmpDiffFound) diffFound.set(true);
-                } else if (diffResult.getLevel() == SimilarityLevel.SPLIT_TOPLEVEL) {
-                    // Multiple top-level candidates split from the old one
-                    List<Node> rightNodes = ((DiffResultTopSplit) diffResult).getSplitCandidates().stream()
-                            .map(c -> c.getRepresentationNode(tx).getSingleRelationship(
-                                    EdgeTypes.object, Direction.INCOMING).getStartNode()).toList();
-                    rightNodes.forEach(n -> rightIdList.remove(n.getElementId()));
-                    Patterns.markTopSplitChange(tx, TopSplitChange.class, leftRelNode, rightNodes);
-                    diffFound.set(true);
                 } else {
                     // Found no match
+                    delLeftCOMIDs.add(leftCOMID);
                     diffFound.set(true);
-                    new DeleteNodeChange(tx, leftListNode, rightListNode, leftRel);
                 }
+
                 TASKS_DONE.getAndIncrement();
-                logger.info("MATCHED {}", new DecimalFormat("00.00%").format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
+                logger.info("MATCHED {}", new DecimalFormat("00.00%")
+                        .format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
                 tx.commit();
             } catch (Exception e) {
-                logger.error(e.getMessage() + "D\n" + Arrays.toString(e.getStackTrace()));
+                logger.error(e.getMessage() + " (D)\n" + Arrays.toString(e.getStackTrace()));
             }
             return null;
         }));
-        // Wait for all threads to finish
-        logger.info("Waiting for all threads to finish");
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(config.MATCHER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
+        Neo4jDB.finishThreads(executorService, config.MATCHER_CONCURRENT_TIMEOUT);
+
+        // Single-threaded handling of top-level features that have been split
+        logger.info("Checking for top-level split changes");
+        AtomicInteger splitLeftCount = new AtomicInteger();
+        AtomicInteger splitRightCount = new AtomicInteger();
+        BatchUtils.toBatches(delLeftCOMIDs, 100).forEach(batch -> { // TODO Define a config variable for this
+            try (Transaction tx = graphDb.beginTx()) {
+                batch.forEach(delLeftCOMID -> {
+                    Node delLeftCOMNode = tx.getNodeByElementId(delLeftCOMID);
+                    double[] tmpBBox = GraphUtils.getBoundingBox(
+                            delLeftCOMNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
+                    Rectangle leftRectangle = Geometries.rectangle(
+                            tmpBBox[0], tmpBBox[1],
+                            tmpBBox[3], tmpBBox[4]
+                    );
+                    double leftArea = leftRectangle.area();
+
+                    // Split change: 1 from deleted left + multiple from inserted right
+                    Map<Neo4jGraphRef, Rectangle> partCandidates = new HashMap<>();
+                    rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
+                        if (!rightCOMIDs.contains(entry.value().getRepresentationNode(tx)
+                                .getSingleRelationship(EdgeTypes.object, Direction.INCOMING).getStartNode()
+                                .getElementId())) return;
+                        Rectangle rightRectangle = (Rectangle) entry.geometry();
+                        // Check for overlapping
+                        double overlap = leftRectangle.intersectionArea(rightRectangle);
+                        double rightArea = rightRectangle.area();
+                        double leftOverlapRatio = overlap / leftArea;
+                        double rightOverlapRatio = overlap / rightArea;
+                        if (leftOverlapRatio > 0.2 // TODO Define a config variable for this
+                                && rightOverlapRatio > config.MATCHER_TOLERANCE_SURFACES) { // right area is smaller
+                            partCandidates.put(entry.value(), rightRectangle);
+                        }
+                    });
+
+                    // Multiple overlapping candidates -> sum their area
+                    if (!partCandidates.isEmpty()) {
+                        double sumRightArea = 0;
+                        for (Map.Entry<Neo4jGraphRef, Rectangle> e : partCandidates.entrySet()) {
+                            sumRightArea += e.getValue().area();
+                        }
+
+                        if (sumRightArea / leftArea > config.MATCHER_TOLERANCE_SURFACES) {
+                            // TODO Upper bound of this ratio?
+                            logger.debug("Found top-level split change of 1-to-{} {} objects with {}% >= {}% overlapping area using RTree",
+                                    partCandidates.size(),
+                                    ClazzUtils.getSimpleClassName(delLeftCOMNode),
+                                    Math.round(sumRightArea / leftArea * 100),
+                                    Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
+                            // Mark split changes and remove IDs from right
+                            List<Node> rightCOMNodes = partCandidates.keySet().stream()
+                                    .map(ref -> ref.getRepresentationNode(tx).getSingleRelationship(
+                                            EdgeTypes.object, Direction.INCOMING).getStartNode())
+                                    .toList();
+                            rightCOMNodes.forEach(r -> rightCOMIDs.remove(r.getElementId()));
+                            Patterns.markTopSplitChange(tx, TopSplitChange.class, delLeftCOMNode, rightCOMNodes);
+
+                            splitLeftCount.getAndIncrement();
+                            splitRightCount.addAndGet(partCandidates.size());
+
+                            diffFound.set(true);
+                        }
+                    } else {
+                        // Found no match
+                        Node leftCOMListNode = tx.getNodeByElementId(tmpLeftCOMListID);
+                        Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
+                        Relationship leftRel = delLeftCOMNode.getRelationships(Direction.INCOMING).stream()
+                                .filter(r -> r.getStartNode().getElementId().equals(tmpLeftCOMListID))
+                                .collect(Collectors.toSet()).iterator().next();
+                        new DeleteNodeChange(tx, leftCOMListNode, rightCOMListNode, leftRel);
+                        diffFound.set(true);
+                    }
+                });
+
+                logger.info("-> {} top-level split changes, with {} from right",
+                        splitLeftCount.get(), splitRightCount.get());
+                tx.commit();
+            } catch (Exception e) {
+                logger.error(e.getMessage() + " (E)\n" + Arrays.toString(e.getStackTrace()));
             }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-        }
-        logger.info("All threads finished");
+        });
+        logger.info("Found {} top-level split changes, containing {} top-level features from right",
+                splitLeftCount.get(), splitRightCount.get());
 
         // Remaining multi-relationships in right
-        if (!rightIdList.isEmpty()) {
-            diffFound.set(true);
-
-            // Batch transactions
-            List<List<String>> rightBatches = new ArrayList<>();
-            int rightBatchSize = config.DB_BATCH_SIZE;
-            for (int i = 0; i < rightIdList.size(); i += rightBatchSize) {
-                rightBatches.add(rightIdList.subList(i, Math.min(i + rightBatchSize, rightIdList.size())));
-            }
-            logger.info("Initiated {} batches for remaining multi-relationships in right", rightBatches.size());
-
-            ExecutorService es = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-            String finalLeftListNodeId1 = leftListNodeId;
-            String finalRightListNodeId1 = rightListNodeId;
-            rightBatches.parallelStream().forEach(batch -> es.submit((Callable<Void>) () -> {
+        logger.info("Checking for potential inserted top-level features");
+        AtomicInteger insertedRightCount = new AtomicInteger();
+        if (!rightCOMIDs.isEmpty()) {
+            BatchUtils.toBatches(rightCOMIDs, 100).forEach(batch -> { // TODO Define a config variable for this
                 try (Transaction tx = graphDb.beginTx()) {
-                    Node leftListNode = tx.getNodeByElementId(finalLeftListNodeId1);
-                    Node rightListNode = tx.getNodeByElementId(finalRightListNodeId1);
-                    batch.forEach(rightRelNodeId -> {
-                        try {
-                            Node rightRelNode = tx.getNodeByElementId(rightRelNodeId);
-                            Relationship rightRel = rightRelNode.getRelationships(Direction.INCOMING).stream()
-                                    .filter(r -> r.getStartNode().getElementId().equals(finalRightListNodeId1))
-                                    .collect(Collectors.toSet()).iterator().next();
-                            new InsertNodeChange(tx, leftListNode, rightListNode, rightRel);
-                        } catch (Exception e) {
-                            logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
-                        }
+                    Node leftCOMListNode = tx.getNodeByElementId(tmpLeftCOMListID);
+                    Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
+                    batch.forEach(rightCOMID -> {
+                        Node rightCOMNode = tx.getNodeByElementId(rightCOMID);
+                        Relationship rightRel = rightCOMNode.getRelationships(Direction.INCOMING).stream()
+                                .filter(r -> r.getStartNode().getElementId().equals(tmpRightCOMListID))
+                                .collect(Collectors.toSet()).iterator().next();
+                        new InsertNodeChange(tx, leftCOMListNode, rightCOMListNode, rightRel);
+                        insertedRightCount.getAndIncrement();
                     });
                     tx.commit();
                 } catch (Exception e) {
-                    logger.error(e.getMessage() + "E\n" + Arrays.toString(e.getStackTrace()));
+                    logger.error(e.getMessage() + " (E)\n" + Arrays.toString(e.getStackTrace()));
                 }
-                return null;
-            }));
-            logger.info("Waiting for all threads to finish");
-            es.shutdown();
-            try {
-                if (!es.awaitTermination(config.MATCHER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                    es.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                es.shutdownNow();
-            }
-            logger.info("All threads finished");
+                logger.info("-> {} inserted top-level features", insertedRightCount);
+            });
+
+            diffFound.set(true);
         }
+        logger.info("Found {} inserted top-level features", insertedRightCount);
 
         dbStats.stopTimer("Match city models indexed at " + leftPartitionIndex + " and " + rightPartitionIndex);
         return diffFound.get();
@@ -768,6 +810,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract boolean isTopLevel(Node node);
 
+    protected abstract boolean isTopLevel(Object obj);
+
     protected boolean sameProps(String leftProp, String rightProp) {
         // Ignore leading and trailing spaces
         leftProp = leftProp.trim();
@@ -842,7 +886,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         return anchorNodes.get(0);
     }
 
-    protected abstract Map.Entry<Node, DiffResult> findBest(Transaction tx, Relationship leftRel, Node rightParentNode);
+    protected abstract List<Label> skipLabelsForTopLevel();
+
+    protected abstract PriorityQueue<Map.Entry<String, Double>> findBestTopLevel(Transaction tx, Relationship leftRel, Node rightNode);
+
+    protected abstract Map.Entry<Node, DiffResult> findBest(Transaction tx, Relationship leftRel, Node rightNode);
 
     protected abstract boolean compareMeasurements(Object leftMeasure, Object rightMeasure);
 
@@ -884,7 +932,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
             logger.info("-->| Stored RTrees in the database");
         } catch (Exception e) {
-            logger.error(e.getMessage() + "F\n" + Arrays.toString(e.getStackTrace()));
+            logger.error(e.getMessage() + " " + Arrays.toString(e.getStackTrace()));
         }
     }
 

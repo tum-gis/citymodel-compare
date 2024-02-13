@@ -9,6 +9,14 @@ import java.util.stream.StreamSupport;
 public class BatchUtils {
     public static final int BATCH_SIZE = 1000; // TODO Set this in a central config file?
 
+    public static <T> List<List<T>> toBatches(List<T> list, int batchSize) {
+        List<List<T>> batches = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += batchSize) {
+            batches.add(list.subList(i, Math.min(i + batchSize, list.size())));
+        }
+        return batches;
+    }
+
     // Convert a stream to a stream of batches of given size
     // Source: https://stackoverflow.com/a/59164175/5360833
     public static <T> Stream<List<T>> toBatches(Stream<T> stream, int size) {

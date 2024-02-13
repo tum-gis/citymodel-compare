@@ -19,11 +19,22 @@ import org.citygml4j.builder.jaxb.CityGMLBuilderException;
 import org.citygml4j.core.model.CityGMLVersion;
 import org.citygml4j.geometry.Matrix;
 import org.citygml4j.model.citygml.CityGML;
+import org.citygml4j.model.citygml.bridge.Bridge;
 import org.citygml4j.model.citygml.building.*;
+import org.citygml4j.model.citygml.cityfurniture.CityFurniture;
+import org.citygml4j.model.citygml.cityobjectgroup.CityObjectGroup;
 import org.citygml4j.model.citygml.core.AbstractCityObject;
 import org.citygml4j.model.citygml.core.CityModel;
 import org.citygml4j.model.citygml.core.CityObjectMember;
 import org.citygml4j.model.citygml.generics.*;
+import org.citygml4j.model.citygml.landuse.LandUse;
+import org.citygml4j.model.citygml.relief.ReliefFeature;
+import org.citygml4j.model.citygml.transportation.AbstractTransportationObject;
+import org.citygml4j.model.citygml.tunnel.Tunnel;
+import org.citygml4j.model.citygml.vegetation.AbstractVegetationObject;
+import org.citygml4j.model.citygml.vegetation.PlantCover;
+import org.citygml4j.model.citygml.waterbody.AbstractWaterObject;
+import org.citygml4j.model.citygml.waterbody.WaterBody;
 import org.citygml4j.model.gml.base.AbstractGML;
 import org.citygml4j.model.gml.base.AssociationByRepOrRef;
 import org.citygml4j.model.gml.base.StringOrRef;
@@ -143,8 +154,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
     @Override
     protected void partitionMapPostProcessing(Object chunk, Neo4jGraphRef graphRef, int partitionIndex, boolean connectToRoot) {
-        if (chunk instanceof AbstractCityObject) {
-            // Add top-level feature to RTree index
+        if (chunk instanceof AbstractCityObject && isTopLevel(chunk)) {
+            // Add top-level features to RTree index
             BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
             if (boundingShape == null) return;
             Envelope envelope = boundingShape.getEnvelope();
@@ -179,6 +190,114 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         return node.hasLabel(Label.label(CityObjectMember.class.getName()));
     }
 
+    @Override
+    protected boolean isTopLevel(Object obj) {
+        return obj instanceof Building
+                || obj instanceof Bridge
+                || obj instanceof Tunnel
+                || obj instanceof CityFurniture
+                || obj instanceof CityObjectGroup
+                || obj instanceof GenericCityObject
+                || obj instanceof LandUse
+                || obj instanceof ReliefFeature
+                || obj instanceof AbstractTransportationObject
+                || obj instanceof AbstractVegetationObject
+                || obj instanceof AbstractWaterObject;
+    }
+
+    @Override
+    protected List<Label> skipLabelsForTopLevel() {
+        return List.of(Label.label(Solid.class.getName()));
+    }
+
+    // Match top-level features, return matches with descending similarity
+    @Override
+    protected PriorityQueue<Map.Entry<String, Double>> findBestTopLevel(Transaction tx, Relationship leftRel, Node rightNode) {
+        Node leftRelNode = leftRel.getEndNode();
+        if (!isTopLevel(leftRelNode)) {
+            throw new RuntimeException("Expected top-level feature, found " + ClazzUtils.getSimpleClassName(leftRelNode));
+        }
+
+        PriorityQueue<Map.Entry<String, Double>> maxHeap = new PriorityQueue<>(
+                (r1, r2) -> r2.getValue().compareTo(r1.getValue()));
+
+        Node leftTLNode = leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+        int rightPartitionIndex = Integer.parseInt(StreamSupport
+                .stream(rightNode.getLabels().spliterator(), false)
+                .filter(label -> label.name().startsWith(AuxNodeLabels.__PARTITION_INDEX__.name()))
+                .collect(Collectors.toSet())
+                .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
+        double[] tmpBBox = GraphUtils.getBoundingBox(leftTLNode);
+        Rectangle leftRectangle = Geometries.rectangle(
+                tmpBBox[0], tmpBBox[1],
+                tmpBBox[3], tmpBBox[4]
+        );
+        double leftArea = leftRectangle.area();
+
+        // Preparations
+        List<Rectangle> rightRectangles = new ArrayList<>();
+        List<String> rightCOMIDs = new ArrayList<>();
+        rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
+            Rectangle rightRectangle = (Rectangle) entry.geometry();
+            rightRectangles.add(rightRectangle);
+            String rightCOMID = entry.value().getRepresentationNode(tx)
+                    .getSingleRelationship(EdgeTypes.object, Direction.INCOMING)
+                    .getStartNode().getElementId();
+            rightCOMIDs.add(rightCOMID);
+        });
+
+        // First check for overlapping
+        for (int i = 0; i < rightRectangles.size(); i++) {
+            Rectangle rightRectangle = rightRectangles.get(i);
+            String rightCOMID = rightCOMIDs.get(i);
+
+            // Check for overlapping
+            double overlap = leftRectangle.intersectionArea(rightRectangle);
+            double rightArea = rightRectangle.area();
+            double leftOverlapRatio = overlap / leftArea;
+            double rightOverlapRatio = overlap / rightArea;
+            if (leftOverlapRatio > config.MATCHER_TOLERANCE_SURFACES
+                    && rightOverlapRatio > config.MATCHER_TOLERANCE_SURFACES) {
+                // Overlap satisfies a minimum threshold
+                maxHeap.add(new AbstractMap.SimpleEntry<>(rightCOMID, leftOverlapRatio));
+            }
+        }
+
+        if (!maxHeap.isEmpty()) return maxHeap;
+
+        // Too small overlapping, check for translations
+        for (int i = 0; i < rightRectangles.size(); i++) {
+            Rectangle rightRectangle = rightRectangles.get(i);
+            String rightCOMID = rightCOMIDs.get(i);
+            double rightArea = rightRectangle.area();
+
+            // Accept equal widths and heights
+            if (Math.abs(leftRectangle.perimeter() - rightRectangle.perimeter())
+                    < 2 * config.MATCHER_TOLERANCE_LENGTHS) {
+                double distance = rightRectangle.distance(leftRectangle);
+                if (distance < config.MATCHER_TRANSLATION_DISTANCE) { // Accept translations within a threshold
+                    // Move left rectangle to the right
+                    Rectangle movedLeftRectangle = Geometries.rectangle(
+                            leftRectangle.x1() + distance, leftRectangle.y1() + distance,
+                            leftRectangle.x2() + distance, leftRectangle.y2() + distance
+                    );
+
+                    // Check for overlapping
+                    double movedOverlap = movedLeftRectangle.intersectionArea(rightRectangle);
+                    double leftMovedOverlapRatio = movedOverlap / leftArea;
+                    double rightMovedOverlapRatio = movedOverlap / rightArea;
+                    if (leftMovedOverlapRatio > config.MATCHER_TOLERANCE_SURFACES
+                            && rightMovedOverlapRatio > config.MATCHER_TOLERANCE_SURFACES) {
+                        // Overlap satisfies a minimum threshold
+                        maxHeap.add(new AbstractMap.SimpleEntry<>(rightCOMID, leftMovedOverlapRatio));
+                    }
+                }
+            }
+        }
+
+        return maxHeap;
+    }
+
     // Given a parent node and a relationship, find a corresponding match
     // TODO Same for CityGML v3
     @Override
@@ -189,134 +308,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         Precision.DoubleEquivalence precision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_LENGTHS);
         Precision.DoubleEquivalence translationPrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TRANSLATION_DISTANCE);
         Precision.DoubleEquivalence anglePrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_ANGLES);
-
-        // Top-level features
-        if (isTopLevel(leftRelNode)) {
-            Node leftTLNode = leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
-            int leftPartitionIndex = Integer.parseInt(StreamSupport
-                    .stream(leftTLNode.getLabels().spliterator(), false)
-                    .filter(label -> label.name().startsWith(AuxNodeLabels.__PARTITION_INDEX__.name()))
-                    .collect(Collectors.toSet())
-                    .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
-            int rightPartitionIndex = Integer.parseInt(StreamSupport
-                    .stream(rightNode.getLabels().spliterator(), false)
-                    .filter(label -> label.name().startsWith(AuxNodeLabels.__PARTITION_INDEX__.name()))
-                    .collect(Collectors.toSet())
-                    .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
-            String leftUuid = leftTLNode.getProperty(AuxPropNames.__UUID__.toString()).toString();
-            double[] tmpBBox = GraphUtils.getBoundingBox(leftTLNode);
-            Rectangle leftRectangle = Geometries.rectangle(
-                    tmpBBox[0], tmpBBox[1],
-                    tmpBBox[3], tmpBBox[4]
-            );
-            double leftArea = leftRectangle.area();
-            AtomicReference<Double> maxOverlapRatioNoDistance = new AtomicReference<>(Double.MIN_VALUE);
-            AtomicReference<Double> maxOverlapRatioWithDistance = new AtomicReference<>(Double.MIN_VALUE);
-            AtomicReference<Neo4jGraphRef> candidateOverlapNoDistance = new AtomicReference<>(null);
-            AtomicReference<Neo4jGraphRef> candidateOverlapWithDistance = new AtomicReference<>(null);
-            rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
-                Rectangle rightRectangle = (Rectangle) entry.geometry();
-
-                // Check for overlapping
-                double overlap = leftRectangle.intersectionArea(rightRectangle);
-                double rightArea = rightRectangle.area();
-                double overlapRatio = overlap / Math.sqrt(leftArea * rightArea);
-                if (overlapRatio > maxOverlapRatioNoDistance.get()) {
-                    // Choose only top-level feature with the biggest overlapping footprint area
-                    maxOverlapRatioNoDistance.set(overlapRatio);
-                    candidateOverlapNoDistance.set(entry.value());
-                } else {
-                    // Overlap is too small but may still be relevant in case of translation
-                    double distance = rightRectangle.distance(leftRectangle);
-                    Rectangle movedLeftRectangle = Geometries.rectangle(
-                            leftRectangle.x1() + distance, leftRectangle.y1() + distance,
-                            leftRectangle.x2() + distance, leftRectangle.y2() + distance
-                    );
-
-                    // Check for overlapping
-                    double movedOverlap = movedLeftRectangle.intersectionArea(rightRectangle);
-                    double movedOverlapRatio = movedOverlap / Math.sqrt(leftArea * rightArea);
-                    if (movedOverlapRatio > maxOverlapRatioWithDistance.get()) {
-                        // Choose only top-level feature with the biggest overlapping footprint area
-                        maxOverlapRatioWithDistance.set(movedOverlapRatio);
-                        candidateOverlapWithDistance.set(entry.value());
-                    }
-                }
-            });
-            if (candidateOverlapNoDistance.get() != null) {
-                logger.debug("Found the best matching candidate for {} with {}% >= {}% overlapping area using RTree",
-                        ClazzUtils.getSimpleClassName(leftTLNode),
-                        Math.round(maxOverlapRatioNoDistance.get() * 100),
-                        Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
-                Node rightTLNode = candidateOverlapNoDistance.get().getRepresentationNode(tx);
-                // Return parent node
-                return new AbstractMap.SimpleEntry<>(rightTLNode.getSingleRelationship(
-                        EdgeTypes.object, Direction.INCOMING).getStartNode(),
-                        new DiffResultGeo(
-                                SimilarityLevel.SIMILAR_GEOMETRY,
-                                maxOverlapRatioNoDistance.get(),
-                                // Most Solids are defined by using XLinks
-                                // Do not match Solids (to avoid rematching their boundary surfaces)
-                                // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                List.of(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
-                                null
-                        ));
-            }
-            if (candidateOverlapWithDistance.get() != null) {
-                logger.debug("Found the best matching candidate for {} with {}% >= {}% overlapping area (with translation) using RTree",
-                        ClazzUtils.getSimpleClassName(leftTLNode),
-                        Math.round(maxOverlapRatioWithDistance.get() * 100),
-                        Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
-                Node rightTLNode = candidateOverlapWithDistance.get().getRepresentationNode(tx);
-                // Return parent node
-                return new AbstractMap.SimpleEntry<>(rightTLNode.getSingleRelationship(
-                        EdgeTypes.object, Direction.INCOMING).getStartNode(),
-                        new DiffResultGeo(
-                                SimilarityLevel.SIMILAR_GEOMETRY,
-                                maxOverlapRatioWithDistance.get(),
-                                // Most Solids are defined by using XLinks
-                                // Do not match Solids (to avoid rematching their boundary surfaces)
-                                // TODO Comment this line out if the input datasets do NOT use XLinks for Solids
-                                List.of(Label.label(Solid.class.getName())), // TODO Label list to skip for top-level features
-                                null
-                        ));
-            }
-
-            // Check for ObjectSplit changes (whether this old top-level feature has been split)
-            Map<Neo4jGraphRef, Rectangle> partCandidates = new HashMap<>();
-            rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
-                Rectangle rightRectangle = (Rectangle) entry.geometry();
-                // Check for overlapping
-                double overlap = leftRectangle.intersectionArea(rightRectangle);
-                double rightArea = rightRectangle.area();
-                double overlapRatio = overlap / Math.sqrt(leftArea * rightArea);
-                if (overlapRatio > 0.2) { // TODO Define a config variable for this
-                    // Choose top-level features that may have been split from the reference one
-                    partCandidates.put(entry.value(), rightRectangle);
-                }
-            });
-            if (!partCandidates.isEmpty()) { // Multiple overlapping candidates -> sum their area
-                double sumRightArea = 0;
-                for (Map.Entry<Neo4jGraphRef, Rectangle> e : partCandidates.entrySet()) {
-                    sumRightArea += e.getValue().area();
-                }
-                if (sumRightArea / leftArea > config.MATCHER_TOLERANCE_SURFACES) {
-                    logger.debug("Found the best matching split candidates for {} with {}% >= {}% overlapping area using RTree",
-                            ClazzUtils.getSimpleClassName(leftTLNode),
-                            Math.round(sumRightArea / leftArea * 100),
-                            Math.round(config.MATCHER_TOLERANCE_SURFACES * 100));
-                    // Return parent node
-                    return new AbstractMap.SimpleEntry<>(null, // this first variable is not important
-                            new DiffResultTopSplit(
-                                    SimilarityLevel.SPLIT_TOPLEVEL,
-                                    sumRightArea / leftArea,
-                                    partCandidates.keySet().stream().toList() // this is important
-                            ));
-                }
-            }
-            return new AbstractMap.SimpleEntry<>(null,
-                    new DiffResult(SimilarityLevel.NONE, 0));
-        }
 
         // BuildingPartProperties or Solid
         if (leftRelNode.hasLabel(Label.label(BuildingPartProperty.class.getName()))

@@ -18,6 +18,7 @@ import org.citygml4j.core.util.reference.DefaultReferenceResolver;
 import org.citygml4j.xml.CityGMLContext;
 import org.citygml4j.xml.CityGMLContextException;
 import org.citygml4j.xml.reader.*;
+import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
@@ -28,11 +29,13 @@ import org.xmlobjects.gml.model.base.AbstractInlineOrByReferenceProperty;
 import org.xmlobjects.gml.model.base.AbstractReference;
 import org.xmlobjects.gml.model.feature.BoundingShape;
 import org.xmlobjects.gml.model.geometry.Envelope;
+import org.xmlobjects.gml.model.geometry.primitives.Solid;
 import org.xmlobjects.gml.util.EnvelopeOptions;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -117,7 +120,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
 
     @Override
     protected void partitionMapPostProcessing(Object chunk, Neo4jGraphRef graphRef, int partitionIndex, boolean connectToRoot) {
-        if (chunk instanceof AbstractCityObject) {
+        if (chunk instanceof AbstractCityObject && isTopLevel(chunk)) {
             // Add top-level feature to RTree index
             BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
             if (boundingShape == null) return;
@@ -160,6 +163,22 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     protected boolean isTopLevel(Node node) {
         // TODO
         return false;
+    }
+
+    @Override
+    protected boolean isTopLevel(Object object) {
+        // TODO
+        return true;
+    }
+
+    @Override
+    protected List<Label> skipLabelsForTopLevel() {
+        return List.of(Label.label(Solid.class.getName()));
+    }
+
+    protected PriorityQueue<Map.Entry<String, Double>> findBestTopLevel(Transaction tx, Relationship leftRel, Node rightNode) {
+        // TODO
+        return null;
     }
 
     @Override

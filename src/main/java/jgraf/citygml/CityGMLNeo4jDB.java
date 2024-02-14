@@ -151,7 +151,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         Set<Neo4jGraphRef> cityModelRefs = Collections.synchronizedSet(new HashSet<>());
         AtomicLong tlCountDir = new AtomicLong(0);
         try (Stream<Path> st = Files.walk(path)) {
-            st.filter(Files::isRegularFile).parallel().forEach(file -> {
+            st.filter(Files::isRegularFile).forEach(file -> {
                 // One file one thread
                 executorService.submit((Callable<Void>) () -> {
                     try {
@@ -160,7 +160,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         CityGMLInputFactory in = builder.createCityGMLInputFactory();
                         in.setProperty(CityGMLInputFactory.FEATURE_READ_MODE, FeatureReadMode.SPLIT_PER_COLLECTION_MEMBER);
                         try (CityGMLReader reader = in.createCityGMLReader(file.toFile())) {
-                            logger.info("Reading tiled CityGML v2.0 file {} chunk-wise into main memory", file.toString());
+                            logger.info("Reading file {}", file.toString());
                             long tlCountFile = 0;
                             while (reader.hasNext()) {
                                 CityGML chunk = reader.nextFeature();
@@ -248,7 +248,6 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         // Store all node IDs in a list first
         mappedClassesSaved.stream()
                 .filter(clazz -> ClazzUtils.isSubclass(clazz, hrefClasses))
-                .parallel()
                 .forEach(hrefClass -> executorService.submit((Callable<Void>) () -> {
                     try (Transaction tx = graphDb.beginTx()) {
                         logger.info("Collecting node index {}", hrefClass.getName());
@@ -278,7 +277,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         // Resolve XLinks
         AtomicInteger transactionCount = new AtomicInteger();
         ExecutorService esBatch = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        batches.parallelStream().forEach(batch -> esBatch.submit((Callable<Void>) () -> {
+        batches.forEach(batch -> esBatch.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
                 batch.forEach(nodeId -> {
                     Node hrefNode = tx.getNodeByElementId(nodeId);
@@ -414,7 +413,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         String tmpRightCOMListID = rightCOMListID;
         final long NR_OF_TASKS = leftCOMIDs.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
-        leftCOMIDs.parallelStream().forEach(leftCOMID -> executorService.submit((Callable<Void>) () -> {
+        leftCOMIDs.forEach(leftCOMID -> executorService.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
                 Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
                 Node leftCOMNode = tx.getNodeByElementId(leftCOMID);

@@ -220,7 +220,7 @@ public class Patterns {
         logger.info("Phase 1: Interpreting changes within {} top-level features", nonDelToplevelIds.size());
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         AtomicInteger counter = new AtomicInteger();
-        nonDelToplevelIds.parallelStream().forEach(toplevelId -> {
+        nonDelToplevelIds.forEach(toplevelId -> {
             int currentCount = counter.getAndIncrement();
             esTop.submit((Callable<Void>) () -> {
                 processPhase1(graphDb, toplevelId, currentCount, nonDelToplevelIds.size(),

@@ -517,7 +517,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 new DiffResultGeoSize(
                                         sizeChange.toArray(),
                                         List.of(Label.label(MultiSurface.class.getName())),
-                                        Label.label(Polygon.class.getName())
+                                        Label.label(SurfaceProperty.class.getName())
                                 ));
                     }
                 } else if (translation.norm() < config.MATCHER_TRANSLATION_DISTANCE) {
@@ -603,7 +603,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 minTranslation.toArray(),
                                 minResize.toArray(),
                                 List.of(Label.label(MultiSurface.class.getName())),
-                                Label.label(Polygon.class.getName())
+                                Label.label(SurfaceProperty.class.getName())
                         ));
             }
 
@@ -615,7 +615,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         new DiffResultGeoTranslation(
                                 minTranslation.toArray(),
                                 List.of(Label.label(MultiSurface.class.getName())),
-                                Label.label(Polygon.class.getName())
+                                Label.label(SurfaceProperty.class.getName())
                         ));
             }
 
@@ -627,7 +627,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             minTranslation.toArray(),
                             minResize.toArray(),
                             List.of(Label.label(MultiSurface.class.getName())),
-                            Label.label(Polygon.class.getName())
+                            Label.label(SurfaceProperty.class.getName())
                     ));
 
             // TODO Further checks for rotation, etc. (remember to use continue; to skip other checks below)

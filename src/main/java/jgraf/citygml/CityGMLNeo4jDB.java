@@ -188,16 +188,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         } catch (IOException e) {
             throw new RuntimeException(e);
         } finally {
-            logger.info("Waiting for all threads to finish");
-            executorService.shutdown();
-            try {
-                if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                    executorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                executorService.shutdownNow();
-            }
-            logger.info("All threads finished");
+            Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
         }
         logger.info("Mapped {} top-level features from directory {}", tlCountDir, path.toString());
         dbStats.stopTimer("Map all input tiled files in " + path.toString());
@@ -232,6 +223,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + " (B)\n" + Arrays.toString(e.getStackTrace()));
+            throw new RuntimeException(e);
         }
         dbStats.stopTimer("Merge all CityModel objects to one [" + partitionIndex + "]");
 
@@ -310,6 +302,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 tx.commit();
             } catch (Exception e) {
                 logger.error(e.getMessage() + " " + Arrays.toString(e.getStackTrace()));
+                throw new RuntimeException(e);
             }
             return null;
         }));
@@ -405,6 +398,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + " (C)\n" + Arrays.toString(e.getStackTrace()));
+            throw new RuntimeException(e);
         }
 
         // Multi-threaded matching
@@ -454,6 +448,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 tx.commit();
             } catch (Exception e) {
                 logger.error(e.getMessage() + " (D)\n" + Arrays.toString(e.getStackTrace()));
+                throw new RuntimeException(e);
             }
             return null;
         }));
@@ -537,6 +532,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 tx.commit();
             } catch (Exception e) {
                 logger.error(e.getMessage() + " (E)\n" + Arrays.toString(e.getStackTrace()));
+                throw new RuntimeException(e);
             }
         });
         logger.info("Found {} top-level split changes, containing {} top-level features from right",
@@ -560,7 +556,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     });
                     tx.commit();
                 } catch (Exception e) {
-                    logger.error(e.getMessage() + " (E)\n" + Arrays.toString(e.getStackTrace()));
+                    logger.error(e.getMessage() + " (F)\n" + Arrays.toString(e.getStackTrace()));
+                    throw new RuntimeException(e);
                 }
                 logger.info("-> {} inserted top-level features", insertedRightCount);
             });

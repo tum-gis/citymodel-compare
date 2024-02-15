@@ -172,6 +172,12 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected Node getAnchorNode(Transaction tx, Node node, Label anchor) {
+        // TODO
+        return null;
+    }
+
+    @Override
     protected List<Label> skipLabelsForTopLevel() {
         return List.of(Label.label(Solid.class.getName()));
     }

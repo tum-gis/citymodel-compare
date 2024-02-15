@@ -8,6 +8,8 @@ public enum EdgeTypes implements RelationshipType {
     elementData,
     cityObjectMember,
     object,
+    lod2MultiSurface,
+    surfaceMember,
     boundedBy,
     envelope,
     lowerCorner,

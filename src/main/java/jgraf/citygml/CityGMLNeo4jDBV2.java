@@ -3,10 +3,7 @@ package jgraf.citygml;
 import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.Neo4jGraphRef;
-import jgraf.neo4j.factory.AuxNodeLabels;
-import jgraf.neo4j.factory.AuxPropNames;
-import jgraf.neo4j.factory.EdgeTypes;
-import jgraf.neo4j.factory.PropNames;
+import jgraf.neo4j.factory.*;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.*;
@@ -990,6 +987,17 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
         return new AbstractMap.SimpleEntry<>(null,
                 new DiffResult(SimilarityLevel.NONE, 0));
+    }
+
+    @Override
+    protected Node getAnchorNode(Transaction tx, Node node, Label anchor) {
+        // BoundarySurfaceProperty -[*]-> SurfaceProperty
+        return node.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                .getSingleRelationship(EdgeTypes.lod2MultiSurface, Direction.OUTGOING).getEndNode()
+                .getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                .getSingleRelationship(EdgeTypes.surfaceMember, Direction.OUTGOING).getEndNode()
+                .getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode()
+                .getSingleRelationship(AuxEdgeTypes.ARRAY_MEMBER, Direction.OUTGOING).getEndNode();
     }
 
     @Override

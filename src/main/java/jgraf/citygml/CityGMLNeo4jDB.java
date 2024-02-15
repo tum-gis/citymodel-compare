@@ -859,6 +859,9 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         }
     }
 
+    protected abstract  Node getAnchorNode(Transaction tx, Node node, Label anchor);
+
+    /*
     private Node getAnchorNode(Transaction tx, Node node, Label anchor) {
         Traverser traverser = tx.traversalDescription()
                 .depthFirst()
@@ -881,6 +884,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         }
         return anchorNodes.get(0);
     }
+    */
 
     protected abstract List<Label> skipLabelsForTopLevel();
 

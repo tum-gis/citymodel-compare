@@ -24,6 +24,7 @@ public abstract class BaseDBConfig {
     public final double MATCHER_TRANSLATION_DISTANCE;
     public final String MATCHER_EXPORT_PATH;
     public final int MATCHER_CONCURRENT_TIMEOUT;
+    public final int MATCHER_TOPLEVEL_BATCH_SIZE;
 
     public BaseDBConfig(String configPath) {
         Config parsedConfig = ConfigFactory.parseFile(new File(configPath));
@@ -50,5 +51,6 @@ public abstract class BaseDBConfig {
         MATCHER_TRANSLATION_DISTANCE = config.getDouble("matcher.translation.distance");
         MATCHER_EXPORT_PATH = config.getString("matcher.export.path");
         MATCHER_CONCURRENT_TIMEOUT = config.getInt("matcher.concurrent.timeout");
+        MATCHER_TOPLEVEL_BATCH_SIZE = config.getInt("matcher.toplevel.batch.size");
     }
 }

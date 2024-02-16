@@ -39,6 +39,15 @@ public class BatchUtils {
         return batches;
     }
 
+    // Divide a list into batches of given size, while NOT changing the original list
+    public static <T> List<List<T>> toBatchesKeep(List<T> list, int batchSize) {
+        List<List<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        for (int i = 0; i < list.size(); i += batchSize) {
+            batches.add(list.subList(i, Math.min(i + batchSize, list.size())));
+        }
+        return batches;
+    }
+
     // Divide a set into batches of given size, while removing each element from the set
     public static <T extends Comparable<?>> List<Set<T>> toBatches(Set<T> set, int batchSize) {
         List<Set<T>> batches = Collections.synchronizedList(new LinkedList<>());
@@ -50,6 +59,16 @@ public class BatchUtils {
                 iter.remove();
             }
             batches.add(batch);
+        }
+        return batches;
+    }
+
+    // Divide a set into batches of given size, while NOT changing the original set
+    public static <T extends Comparable<?>> List<Set<T>> toBatchesKeep(Set<T> set, int batchSize) {
+        List<Set<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        List<T> list = new ArrayList<>(set);
+        for (int i = 0; i < list.size(); i += batchSize) {
+            batches.add(new ConcurrentSkipListSet<>(list.subList(i, Math.min(i + batchSize, list.size()))));
         }
         return batches;
     }

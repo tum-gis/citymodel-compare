@@ -3,6 +3,7 @@ package jgraf.citygml;
 import com.github.davidmoten.rtree.RTree;
 import com.github.davidmoten.rtree.geometry.Geometry;
 import com.github.davidmoten.rtree.geometry.Rectangle;
+import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.diff.Change;
 import jgraf.neo4j.diff.DeleteNodeChange;
@@ -11,6 +12,7 @@ import jgraf.neo4j.diff.TranslationChange;
 import jgraf.neo4j.factory.AuxEdgeTypes;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.EdgeTypes;
+import jgraf.utils.BatchUtils;
 import jgraf.utils.ConcurrentKeyHashMap;
 import jgraf.utils.GraphUtils;
 import org.citygml4j.model.citygml.building.Building;
@@ -168,14 +170,15 @@ public class Patterns {
             GraphDatabaseService graphDb,
             String jsFile,
             RTree<Neo4jGraphRef, Geometry> rtree,
-            int batchSize,
+            int dbBatchSize,
+            int toplevelBatchSize,
             double precision,
             int timeout
     ) {
         logger.info("|--> Applying pattern rules");
 
         // Init list of all top-level features // TODO Memory check?
-        List<String> nonDelToplevelIds = new ArrayList<>();
+        List<String> nonDelToplevelIds = Collections.synchronizedList(new LinkedList<>());
         try (Transaction tx = graphDb.beginTx()) {
             // Find all top-level features and their changes
             tx.findNodes(Label.label(Building.class.getName())).forEachRemaining(toplevel -> {
@@ -217,32 +220,31 @@ public class Patterns {
         final double[] entireBbox2D = {entireBbox.x1(), entireBbox.y1(), entireBbox.x2(), entireBbox.y2()};
 
         // Phase 1: Multi-threaded processing of sub-elements of top-level features
-        logger.info("Phase 1: Interpreting changes within {} top-level features", nonDelToplevelIds.size());
+        int nonDelToplevelSize = nonDelToplevelIds.size();
+        logger.info("Phase 1: Interpreting changes within {} top-level features", nonDelToplevelSize);
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         AtomicInteger counter = new AtomicInteger();
-        nonDelToplevelIds.forEach(toplevelId -> {
-            int currentCount = counter.getAndIncrement();
-            esTop.submit((Callable<Void>) () -> {
-                processPhase1(graphDb, toplevelId, currentCount, nonDelToplevelIds.size(),
-                        entireBbox2D, jsFnString, engine, precision);
-                return null;
-            });
-        });
-        // Wait for all threads to finish
-        logger.info("Waiting for all threads to finish");
-        esTop.shutdown();
-        try {
-            if (!esTop.awaitTermination(timeout, TimeUnit.SECONDS)) {
-                esTop.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            esTop.shutdownNow();
-        }
-        logger.info("All threads finished");
+        BatchUtils.toBatchesKeep(nonDelToplevelIds, toplevelBatchSize)
+                .forEach(batch -> esTop.submit((Callable<Void>) () -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(toplevelId -> {
+                            counter.getAndIncrement();
+                            processPhase1(tx, toplevelId, nonDelToplevelSize,
+                                    entireBbox2D, jsFnString, engine, precision);
+                        });
+                        logger.info("INTERPRETED (Phase 1) {}", new DecimalFormat("00.00%")
+                                .format(counter.get() * 1. / nonDelToplevelSize));
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error("Error in phase 1: {}\n{}", e.getMessage(), Arrays.toString(e.getStackTrace()));
+                    }
+                    return null;
+                }));
+        Neo4jDB.finishThreads(esTop, timeout);
 
         // Phase 2: Aggregation of top-level features (including calculating scope)
         logger.info("Phase 2: Interpreting changes over top-level features");
-        processPhase2(graphDb, nonDelToplevelIds, entireBbox2D, jsFnString, engine, batchSize, precision, timeout);
+        processPhase2(graphDb, nonDelToplevelIds, entireBbox2D, jsFnString, engine, dbBatchSize, precision, timeout);
 
         // Post-processing
         long nrCleaned = cleanUsedMemory(graphDb);
@@ -252,47 +254,38 @@ public class Patterns {
     }
 
     private static void processPhase1(
-            GraphDatabaseService graphDb,
+            Transaction tx,
             String toplevelId,
-            int currentCount,
             int nonDelToplevelSize,
             double[] entireBbox2D,
             String jsFnString,
             ScriptEngine engine,
             double precision
     ) {
-        try (Transaction tx = graphDb.beginTx()) {
-            // Get top-level node based on internal ID
-            Node toplevel = tx.getNodeByElementId(toplevelId);
+        // Get top-level node based on internal ID
+        Node toplevel = tx.getNodeByElementId(toplevelId);
 
-            // Find all changes that are attached to the descendants of the top-level node
-            Traverser traverser = tx.traversalDescription()
-                    .depthFirst()
-                    .expand(PathExpanders.forDirection(Direction.OUTGOING))
-                    .evaluator(Evaluators.fromDepth(0))
-                    .evaluator(path -> {
-                        // The relationship TANDEM is used to connect changes to their content nodes in the older dataset
-                        if (path.endNode().hasRelationship(Direction.INCOMING, AuxEdgeTypes.TANDEM))
-                            return Evaluation.INCLUDE_AND_CONTINUE;
-                        return Evaluation.EXCLUDE_AND_CONTINUE;
-                    })
-                    .traverse(toplevel);
+        // Find all changes that are attached to the descendants of the top-level node
+        Traverser traverser = tx.traversalDescription()
+                .depthFirst()
+                .expand(PathExpanders.forDirection(Direction.OUTGOING))
+                .evaluator(Evaluators.fromDepth(0))
+                .evaluator(path -> {
+                    // The relationship TANDEM is used to connect changes to their content nodes in the older dataset
+                    if (path.endNode().hasRelationship(Direction.INCOMING, AuxEdgeTypes.TANDEM))
+                        return Evaluation.INCLUDE_AND_CONTINUE;
+                    return Evaluation.EXCLUDE_AND_CONTINUE;
+                })
+                .traverse(toplevel);
 
-            // Init a FIFO queue for processing and interpreting changes
-            Queue<Node> queue = new LinkedList<>();
-            traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM)
-                    .forEach(rel -> queue.add(rel.getStartNode())));
+        // Init a FIFO queue for processing and interpreting changes
+        Queue<Node> queue = new LinkedList<>();
+        traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM)
+                .forEach(rel -> queue.add(rel.getStartNode())));
 
-            // Can be reused in both phase 1 and 2
-            logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
-            processCore(graphDb, tx, queue, null, nonDelToplevelSize, entireBbox2D, jsFnString, engine, precision);
-
-            logger.info("INTERPRETED (Phase 1) {}",
-                    new DecimalFormat("00.00%").format(currentCount * 1. / nonDelToplevelSize));
-            tx.commit();
-        } catch (Exception e) {
-            logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
-        }
+        // Can be reused in both phase 1 and 2
+        logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
+        processCore(tx, queue, null, nonDelToplevelSize, entireBbox2D, jsFnString, engine, precision);
     }
 
     private static void processPhase2(
@@ -359,7 +352,7 @@ public class Patterns {
                         // Can be reused in both phase 1 and 2
                         logger.debug("Found {} changes across all top-level features", batchIds.size());
                         int countBefore = queue.size();
-                        processCore(graphDb, tx, queue, scopes, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
+                        processCore(tx, queue, scopes, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
                         int countAfter = queue.size();
                         count.addAndGet(countBefore - countAfter);
 
@@ -392,17 +385,7 @@ public class Patterns {
                 throw new RuntimeException(e);
             }
 
-            // Wait for all threads to finish
-            logger.info("Waiting for all threads to finish");
-            es.shutdown();
-            try {
-                if (!es.awaitTermination(timeout, TimeUnit.SECONDS)) {
-                    es.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                es.shutdownNow();
-            }
-            logger.info("All threads finished");
+            Neo4jDB.finishThreads(es, timeout);
         }
 
         // Update scope nodes
@@ -463,7 +446,6 @@ public class Patterns {
     }
 
     private static void processCore(
-            GraphDatabaseService graphDb,
             Transaction tx,
             Queue<Node> queue,
             Map<Map<String, String>, Map<String, String>> scopes,
@@ -741,7 +723,7 @@ public class Patterns {
                 // Joining converging edges
                 // - all cap values are filled
                 // - all converging edges are named
-                if (nextRule.hasProperty(_RuleNodePropNames.join.toString())) { // TODO
+                if (nextRule.hasProperty(_RuleNodePropNames.join.toString())) {
                     String join = nextRule.getProperty(_RuleNodePropNames.join.toString()).toString();
 
                     if (!join.contains(".")) {
@@ -1016,6 +998,8 @@ public class Patterns {
             }
             return false;
         } catch (ScriptException e) {
+            logger.error("Exception: {}, jsonProperties = {}, conditions = {}, jsFnString = {}\n{}",
+                    e.getMessage(), jsonProperties, conditions, jsFnString, Arrays.toString(e.getStackTrace()));
             throw new RuntimeException(e);
         }
     }

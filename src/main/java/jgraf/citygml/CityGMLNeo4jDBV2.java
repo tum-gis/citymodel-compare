@@ -989,6 +989,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 new DiffResult(SimilarityLevel.NONE, 0));
     }
 
+    /*
     @Override
     protected Node getAnchorNode(Transaction tx, Node node, Label anchor) {
         // BoundarySurfaceProperty -[*]-> SurfaceProperty
@@ -999,6 +1000,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 .getSingleRelationship(EdgeTypes.elementData, Direction.OUTGOING).getEndNode()
                 .getSingleRelationship(AuxEdgeTypes.ARRAY_MEMBER, Direction.OUTGOING).getEndNode();
     }
+    */
 
     @Override
     protected boolean compareMeasurements(Object leftMeasure, Object rightMeasure) {

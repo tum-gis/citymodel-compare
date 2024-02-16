@@ -495,6 +495,7 @@ public abstract class Neo4jDB implements GraphDB {
                 executorService.shutdownNow();
             }
         } catch (InterruptedException e) {
+            logger.error("awaitTermination interrupted: {}\n{}", e.getMessage(), Arrays.toString(e.getStackTrace()));
             executorService.shutdownNow();
         }
         logger.info("All threads finished");

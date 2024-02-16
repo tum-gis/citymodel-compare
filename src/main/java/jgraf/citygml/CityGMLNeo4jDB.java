@@ -404,6 +404,54 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         String tmpRightCOMListID = rightCOMListID;
         final long NR_OF_TASKS = leftCOMIDs.size();
         AtomicLong TASKS_DONE = new AtomicLong(0);
+        // TODO Define a config variable for this
+        BatchUtils.toBatches(leftCOMIDs, 50).forEach(batch -> executorService.submit((Callable<Void>) () -> {
+            try (Transaction tx = graphDb.beginTx()) {
+                batch.forEach(leftCOMID -> {
+                    Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
+                    Node leftCOMNode = tx.getNodeByElementId(leftCOMID);
+                    Relationship leftRel = leftCOMNode.getRelationships(Direction.INCOMING).stream()
+                            .filter(r -> r.getStartNode().getElementId().equals(tmpLeftCOMListID))
+                            .collect(Collectors.toSet()).iterator().next(); // Relationship ARRAY_MEMBER
+
+                    // Skip candidates that are already taken from the list
+                    PriorityQueue<Map.Entry<String, Double>> maxHeap = findBestTopLevel(tx, leftRel, rightCOMListNode);
+                    Map.Entry<String, Double> candidateEntry = null;
+                    synchronized (rightCOMIDs) {
+                        while (!maxHeap.isEmpty()) {
+                            Map.Entry<String, Double> tmp = maxHeap.poll();
+                            if (rightCOMIDs.contains(tmp.getKey())) {
+                                candidateEntry = tmp;
+                                rightCOMIDs.remove(tmp.getKey());
+                                break;
+                            }
+                        }
+                    }
+
+                    // Handle the best match
+                    if (candidateEntry != null) {
+                        logger.debug("Found best match for {} with overlap value {}", leftCOMNode, candidateEntry.getValue());
+                        Node rightCOMNode = tx.getNodeByElementId(candidateEntry.getKey());
+                        boolean tmpDiffFound = diff(tx, leftCOMNode, rightCOMNode,
+                                true, null, skipLabelsForTopLevel());
+                        if (tmpDiffFound) diffFound.set(true);
+                    } else {
+                        // Found no match
+                        delLeftCOMIDs.add(leftCOMID);
+                        diffFound.set(true);
+                    }
+
+                    TASKS_DONE.getAndIncrement();
+                });
+                logger.info("MATCHED {}", new DecimalFormat("00.00%")
+                        .format(TASKS_DONE.get() * 1. / NR_OF_TASKS));
+                tx.commit();
+            } catch (Exception e) {
+                logger.error(e.getMessage() + " (D)\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        }));
+        /*
         while (!leftCOMIDs.isEmpty()) {
             String leftCOMID = leftCOMIDs.poll();
             executorService.submit((Callable<Void>) () -> {
@@ -451,6 +499,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 return null;
             });
         }
+        */
         Neo4jDB.finishThreads(executorService, config.MATCHER_CONCURRENT_TIMEOUT);
 
         // Single-threaded handling of top-level features that have been split

@@ -651,13 +651,13 @@ MERGE (updated_measured_height)-[:AGGREGATED_TO {
   tags:        'update;thematic;measurement;vertical'
 })-[:AGGREGATED_TO {
   next_content_type: 'org.citygml4j.model.citygml.building.BuildingPart',
-  name:              'rule_measured_height',
+  name:              'rule_measured_height_bp',
   conditions:        'RIGHT_PROPERTY_VALUE - LEFT_PROPERTY_VALUE > 0',
   propagate:         'LEFT_PROPERTY_VALUE;RIGHT_PROPERTY_VALUE', // TODO Option to rename properties (in case edges have the same named properties)
   weight:            '1'
 }]->(raised_building_part_roofs:RULE {
   change_type: 'RaisedBuildingPartRoofs',
-  join:        'fuzzyEquals(parseFloat(rule_measured_height.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))',
+  join:        'fuzzyEquals(parseFloat(rule_measured_height_bp.RIGHT_PROPERTY_VALUE) - parseFloat(rule_measured_height_bp.LEFT_PROPERTY_VALUE), rule_size_changed_walls.z) && fuzzyEquals(rule_translated_roofs.z, parseFloat(rule_size_changed_walls.z) + parseFloat(rule_translated_grounds.z))',
   tags:        'update;thematic;measurement;geometric;vertical'
 })
 MERGE (translated_building_part_roofs)-[:AGGREGATED_TO {

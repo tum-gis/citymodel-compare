@@ -27,6 +27,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.script.*;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -208,10 +210,10 @@ public class Patterns {
         ScriptEngineManager mgr = new ScriptEngineManager();
         ScriptEngine engine = mgr.getEngineByName("nashorn");
         // https://stackoverflow.com/a/30159424 Script Engines can be used in multithreading, except bindings
-        String jsFnString;
+        CompiledScript jsScript = null;
         try {
-            jsFnString = Files.readString(Path.of(jsFile));
-        } catch (IOException e) {
+            jsScript = ((Compilable) engine).compile(Files.readString(Path.of(jsFile)));
+        } catch (IOException | ScriptException e) {
             throw new RuntimeException(e);
         }
 
@@ -224,13 +226,14 @@ public class Patterns {
         logger.info("Phase 1: Interpreting changes within {} top-level features", nonDelToplevelSize);
         ExecutorService esTop = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         AtomicInteger counter = new AtomicInteger();
+        CompiledScript finalJsScript = jsScript;
         BatchUtils.toBatchesKeep(nonDelToplevelIds, toplevelBatchSize)
                 .forEach(batch -> esTop.submit((Callable<Void>) () -> {
                     try (Transaction tx = graphDb.beginTx()) {
                         batch.forEach(toplevelId -> {
                             counter.getAndIncrement();
                             processPhase1(tx, toplevelId, nonDelToplevelSize,
-                                    entireBbox2D, jsFnString, engine, precision);
+                                    entireBbox2D, finalJsScript, engine, precision);
                         });
                         logger.info("INTERPRETED (Phase 1) {}", new DecimalFormat("00.00%")
                                 .format(counter.get() * 1. / nonDelToplevelSize));
@@ -244,7 +247,7 @@ public class Patterns {
 
         // Phase 2: Aggregation of top-level features (including calculating scope)
         logger.info("Phase 2: Interpreting changes over top-level features");
-        processPhase2(graphDb, nonDelToplevelIds, entireBbox2D, jsFnString, engine, dbBatchSize, precision, timeout);
+        processPhase2(graphDb, nonDelToplevelIds, entireBbox2D, jsScript, engine, dbBatchSize, precision, timeout);
 
         // Post-processing
         long nrCleaned = cleanUsedMemory(graphDb);
@@ -258,7 +261,7 @@ public class Patterns {
             String toplevelId,
             int nonDelToplevelSize,
             double[] entireBbox2D,
-            String jsFnString,
+            CompiledScript jsScript,
             ScriptEngine engine,
             double precision
     ) {
@@ -279,20 +282,20 @@ public class Patterns {
                 .traverse(toplevel);
 
         // Init a FIFO queue for processing and interpreting changes
-        Queue<Node> queue = new LinkedList<>();
+        Queue<Node> queue = new ConcurrentLinkedQueue<>();
         traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM)
                 .forEach(rel -> queue.add(rel.getStartNode())));
 
         // Can be reused in both phase 1 and 2
         logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
-        processCore(tx, queue, null, nonDelToplevelSize, entireBbox2D, jsFnString, engine, precision);
+        processCore(tx, queue, null, nonDelToplevelSize, entireBbox2D, jsScript, engine, precision);
     }
 
     private static void processPhase2(
             GraphDatabaseService graphDb,
             List<String> nonDelToplevelIds,
             double[] entireBbox2D,
-            String jsFnString,
+            CompiledScript jsScript,
             ScriptEngine engine,
             int batchSize,
             double precision,
@@ -352,7 +355,7 @@ public class Patterns {
                         // Can be reused in both phase 1 and 2
                         logger.debug("Found {} changes across all top-level features", batchIds.size());
                         int countBefore = queue.size();
-                        processCore(tx, queue, scopes, nonDelToplevelIds.size(), entireBbox2D, jsFnString, engine, precision);
+                        processCore(tx, queue, scopes, nonDelToplevelIds.size(), entireBbox2D, jsScript, engine, precision);
                         int countAfter = queue.size();
                         count.addAndGet(countBefore - countAfter);
 
@@ -451,7 +454,7 @@ public class Patterns {
             Map<Map<String, String>, Map<String, String>> scopes,
             int nonDelToplevelSize,
             double[] entireBBox2D,
-            String jsFnString,
+            CompiledScript jsScript,
             ScriptEngine engine,
             double precision) {
         while (!queue.isEmpty()) {
@@ -503,7 +506,8 @@ public class Patterns {
                 if (rel.hasProperty(_RuleRelPropNames.conditions.toString())) {
                     String conditions = rel.getProperty(_RuleRelPropNames.conditions.toString()).toString();
                     conditionForAll = conditions.contains(";");
-                    if (!conditionForAll && !checkLocalConditions(change, null, conditions, jsFnString, engine)) {
+                    if (!conditionForAll &&
+                            !checkLocalConditions(change, null, conditions, jsScript, engine)) {
                         return;
                     }
                 }
@@ -617,8 +621,6 @@ public class Patterns {
                     // Init memory node
                     memory = tx.createNode(_MemoryNodeLabels.MEMORY);
 
-                    Lock lockMemory = tx.acquireWriteLock(memory);
-
                     // Next change type (exactly one)
                     memory.setProperty(_MemoryPropNames.next_change_type.toString(), nextChangeType);
 
@@ -634,8 +636,9 @@ public class Patterns {
                     }
 
                     // Connect memory to next content node
+                    Lock lockNextContent = tx.acquireWriteLock(nextContent);
                     memory.createRelationshipTo(nextContent, _RuleRelTypes.SAVED_FOR);
-                    lockMemory.release();
+                    lockNextContent.release();
                 } else {
                     // Fetch memory node for this next rule node
                     memory = memoryRels.get(0).getStartNode();
@@ -671,7 +674,7 @@ public class Patterns {
                 // Update count values of not yet visited changes
                 if (!change.hasRelationship(Direction.OUTGOING, _RuleRelTypes.AUX)
                         || change.getRelationships(Direction.OUTGOING, _RuleRelTypes.AUX).stream()
-                        .noneMatch(r -> r.getEndNode().equals(memory))) {
+                        .noneMatch(r -> r.getEndNode().getElementId().equals(memory.getElementId()))) {
                     // Count values
                     String countKey = _MemoryPropNames.count_value_
                             + rule.getProperty(_RuleNodePropNames.change_type.toString()).toString();
@@ -784,15 +787,13 @@ public class Patterns {
                         json.append(" };");
                     });
 
-                    if (!checkLocalConditions(memory, json.toString(), join, jsFnString, engine)) {
+                    if (!checkLocalConditions(memory, json.toString(), join, jsScript, engine)) {
                         return;
                     }
                 }
 
                 // All conditions for the next change node are satisfied
                 Node nextChange = tx.createNode(Label.label(Change.class.getName()));
-
-                Lock lockNextChange = tx.acquireWriteLock(nextChange);
 
                 // Change type
                 nextChange.setProperty(_ChangePropNames.change_type.toString(), nextChangeType);
@@ -830,8 +831,6 @@ public class Patterns {
                 Lock lockMemory = tx.acquireWriteLock(memory);
                 memory.setProperty(_MemoryPropNames.done.toString(), true);
                 lockMemory.release();
-
-                lockNextChange.release();
 
                 // Add this next change to the queue
                 // Only if the next content node is NOT a top-level feature or its rule node has directive to calculate scope
@@ -975,31 +974,38 @@ public class Patterns {
     }
 
     private static boolean checkLocalConditions(Node context, String jsonProperties, String conditions,
-                                                String jsFnString, ScriptEngine engine) {
+                                                CompiledScript jsScript, ScriptEngine engine) {
         // Create a new bindings object for each condition
         Bindings bindings = engine.createBindings();
         bindings.putAll(context.getAllProperties());
         try {
+            // Store the pre-defined JS functions into this bindings object
+            jsScript.eval(bindings);
+            // Store the JSON object into this bindings object
             if (jsonProperties != null) {
-                engine.eval(jsonProperties, bindings);
+                if (jsonProperties.isEmpty()) {
+                    logger.error("JSON properties are empty for conditions = {}, ignoring", conditions);
+                    return false;
+                }
+                CompiledScript compiledJsonObject = ((Compilable) engine).compile(jsonProperties);
+                compiledJsonObject.eval(bindings);
             }
-            // TODO Ideal would be to call engine.eval(jsFnString) only once before starting multithreading
-            // But ScriptEngine seems to only work with bindings
-            if (jsFnString != null) {
-                engine.eval(jsFnString, bindings);
-            }
+            // Evaluate the conditions
             if (conditions != null) {
-                Object obj = engine.eval(conditions, bindings);
+                CompiledScript compiledConditions = ((Compilable) engine).compile(conditions);
+                Object obj = compiledConditions.eval(bindings);
                 if (obj instanceof Boolean) {
                     return (boolean) obj;
                 } else {
+                    logger.error("Exception: Could not execute JS script, jsonProperties = {}, conditions = {}",
+                            jsonProperties, conditions);
                     throw new RuntimeException("Condition " + conditions + " must return boolean ");
                 }
             }
             return false;
         } catch (ScriptException e) {
-            logger.error("Exception: {}, jsonProperties = {}, conditions = {}, jsFnString = {}\n{}",
-                    e.getMessage(), jsonProperties, conditions, jsFnString, Arrays.toString(e.getStackTrace()));
+            logger.error("Exception: {}, jsonProperties = {}, conditions = {}\n{}",
+                    e.getMessage(), jsonProperties, conditions, Arrays.toString(e.getStackTrace()));
             throw new RuntimeException(e);
         }
     }

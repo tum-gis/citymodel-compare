@@ -266,9 +266,12 @@ public class Patterns {
             double precision
     ) {
         // Get top-level node based on internal ID
+        long time = System.nanoTime();
         Node toplevel = tx.getNodeByElementId(toplevelId);
+        logger.debug("A {}", System.nanoTime() - time);
 
         // Find all changes that are attached to the descendants of the top-level node
+        time = System.nanoTime();
         Traverser traverser = tx.traversalDescription()
                 .depthFirst()
                 .expand(PathExpanders.forDirection(Direction.OUTGOING))
@@ -280,11 +283,14 @@ public class Patterns {
                     return Evaluation.EXCLUDE_AND_CONTINUE;
                 })
                 .traverse(toplevel);
+        logger.debug("B {}", System.nanoTime() - time);
 
         // Init a FIFO queue for processing and interpreting changes
+        time = System.nanoTime();
         Queue<Node> queue = new ConcurrentLinkedQueue<>();
         traverser.forEach(path -> path.endNode().getRelationships(Direction.INCOMING, AuxEdgeTypes.TANDEM)
                 .forEach(rel -> queue.add(rel.getStartNode())));
+        logger.debug("C {}", System.nanoTime() - time);
 
         // Can be reused in both phase 1 and 2
         logger.debug("Found {} literal changes for top-level feature {}", queue.size(), toplevelId);
@@ -468,6 +474,7 @@ public class Patterns {
                 throw new RuntimeException("Content node is not from old dataset");
 
             // Find all rules that match the change
+            long time = System.nanoTime();
             List<Node> rules = tx.findNodes(_RuleNodeLabels.RULE, _RuleNodePropNames.change_type.toString(), changeType)
                     .stream().toList();
             if (rules.size() > 1) {
@@ -480,6 +487,7 @@ public class Patterns {
             }
             // Exactly one rule node found
             Node rule = rules.get(0);
+            logger.debug("D {}", System.nanoTime() - time);
 
             // Calculate scope (only top-level features can have a scope)
             // This must be done before evaluating conditions, because the scope node is needed for rule edges
@@ -502,6 +510,7 @@ public class Patterns {
 
             rule.getRelationships(Direction.OUTGOING, _RuleRelTypes.AGGREGATED_TO).stream().forEach(rel -> {
                 // Evaluate conditions, engine bindings are reset
+                long time1 = System.nanoTime();
                 boolean conditionForAll = false; // e.g., "x;y;z" means for all same values of x, y, z across changes
                 if (rel.hasProperty(_RuleRelPropNames.conditions.toString())) {
                     String conditions = rel.getProperty(_RuleRelPropNames.conditions.toString()).toString();
@@ -511,6 +520,7 @@ public class Patterns {
                         return;
                     }
                 }
+                logger.debug("E {}", System.nanoTime() - time1);
 
                 // Next rule node
                 Node nextRule = rel.getEndNode();
@@ -531,6 +541,7 @@ public class Patterns {
                 }
 
                 // Next content node
+                time1 = System.nanoTime();
                 List<Label> notContainedLabels;
                 if (rel.hasProperty(_RuleRelPropNames.not_contains.toString())) {
                     notContainedLabels = Arrays.stream(rel.getProperty(_RuleRelPropNames.not_contains.toString())
@@ -548,6 +559,7 @@ public class Patterns {
                         Label.label(rel.getProperty(_RuleRelPropNames.next_content_type.toString()).toString()),
                         searchLength, notContainedLabels);
                 if (nextContent == null) return;
+                logger.debug("F {}", System.nanoTime() - time1);
 
                 // Evaluate scope (only for top-level features)
                 if (rel.hasProperty(_RuleRelPropNames.scope.toString())) {
@@ -600,6 +612,7 @@ public class Patterns {
 
                 // A memory node contains ALL information needed for the current next rule node
                 // Multiple memory nodes may exist for the same content node
+                time1 = System.nanoTime();
                 List<Relationship> memoryRels = nextContent.getRelationships(Direction.INCOMING, _RuleRelTypes.SAVED_FOR).stream()
                         .filter(r -> r.getStartNode().getProperty(_MemoryPropNames.next_change_type.toString()).toString()
                                 .equals(nextChangeType))
@@ -649,8 +662,10 @@ public class Patterns {
                         }
                     }
                 }
+                logger.debug("G {}", System.nanoTime() - time1);
 
                 // Check conditions for all same values of x, y, z across changes (e.g., "x;y;z")
+                time1 = System.nanoTime();
                 if (conditionForAll) {
                     Set<String> properties = new HashSet<>();
                     Arrays.stream(rel.getProperty(_RuleRelPropNames.conditions.toString()).toString().split(";"))
@@ -659,8 +674,10 @@ public class Patterns {
                         return;
                     }
                 }
+                logger.debug("H {}", System.nanoTime() - time1);
 
                 // Update count values of not yet visited changes
+                time1 = System.nanoTime();
                 if (!change.hasRelationship(Direction.OUTGOING, _RuleRelTypes.AUX)
                         || change.getRelationships(Direction.OUTGOING, _RuleRelTypes.AUX).stream()
                         .noneMatch(r -> r.getEndNode().getElementId().equals(memory.getElementId()))) {
@@ -677,14 +694,18 @@ public class Patterns {
                     // Connect change to the memory (for later redirection to next change)
                     change.createRelationshipTo(memory, _RuleRelTypes.AUX);
                 }
+                logger.debug("I {}", System.nanoTime() - time1);
 
                 // Propagate properties from changes to memory
+                time1 = System.nanoTime();
                 if (rel.hasProperty(_RuleRelPropNames.propagate.toString())) {
                     String propagate = rel.getProperty(_RuleRelPropNames.propagate.toString()).toString();
                     propagate(tx, change, memory, propagate, _MemoryPropNames.property_.toString(), precision);
                 }
+                logger.debug("J {}", System.nanoTime() - time1);
 
                 // Check if all cap values are full
+                time1 = System.nanoTime();
                 Map<String, Boolean> capFilled = new HashMap<>();
                 nextRule.getRelationships(Direction.INCOMING, _RuleRelTypes.AGGREGATED_TO).forEach(r -> {
                     String capK = r.getStartNode().getProperty(_RuleNodePropNames.change_type.toString()).toString();
@@ -703,12 +724,14 @@ public class Patterns {
                     }
                 }
                 if (capFilled.values().stream().anyMatch(b -> !b)) return;
+                logger.debug("K {}", System.nanoTime() - time1);
 
                 // THE FOLLOWING CODE BLOCKS only apply if ALL cap values are full
 
                 // Joining converging edges
                 // - all cap values are filled
                 // - all converging edges are named
+                time1 = System.nanoTime();
                 if (nextRule.hasProperty(_RuleNodePropNames.join.toString())) {
                     String join = nextRule.getProperty(_RuleNodePropNames.join.toString()).toString();
 
@@ -772,8 +795,10 @@ public class Patterns {
                         return;
                     }
                 }
+                logger.debug("L {}", System.nanoTime() - time1);
 
                 // All conditions for the next change node are satisfied
+                time1 = System.nanoTime();
                 Node nextChange = tx.createNode(Label.label(Change.class.getName()));
 
                 // Change type
@@ -813,6 +838,8 @@ public class Patterns {
                     // TODO Extend for CityGML v3, and all other top-level features
                     queue.add(nextChange);
                 }
+
+                logger.debug("M {}", System.nanoTime() - time1);
             });
         }
     }
@@ -947,6 +974,7 @@ public class Patterns {
     private static boolean checkLocalConditions(Node context, String jsonProperties, String conditions,
                                                 CompiledScript jsScript, ScriptEngine engine) {
         // Create a new bindings object for each condition
+        long time = System.nanoTime();
         Bindings bindings = engine.createBindings();
         bindings.putAll(context.getAllProperties());
         try {
@@ -965,6 +993,7 @@ public class Patterns {
             if (conditions != null) {
                 CompiledScript compiledConditions = ((Compilable) engine).compile(conditions);
                 Object obj = compiledConditions.eval(bindings);
+                logger.debug("ScriptEngine {}", System.nanoTime() - time);
                 if (obj instanceof Boolean) {
                     return (boolean) obj;
                 } else {

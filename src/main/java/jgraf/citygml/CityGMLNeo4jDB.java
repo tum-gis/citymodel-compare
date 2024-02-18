@@ -540,29 +540,32 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
         // Remaining multi-relationships in right
         logger.info("Checking for potential inserted top-level features");
+        ExecutorService esInsert = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         AtomicInteger insertedRightCount = new AtomicInteger();
         if (!rightCOMIDs.isEmpty()) {
-            BatchUtils.toBatches(rightCOMIDs, 100).forEach(batch -> { // TODO Define a config variable for this
-                try (Transaction tx = graphDb.beginTx()) {
-                    Node leftCOMListNode = tx.getNodeByElementId(tmpLeftCOMListID);
-                    Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
-                    batch.forEach(rightCOMID -> {
-                        Node rightCOMNode = tx.getNodeByElementId(rightCOMID);
-                        Relationship rightRel = rightCOMNode.getRelationships(Direction.INCOMING).stream()
-                                .filter(r -> r.getStartNode().getElementId().equals(tmpRightCOMListID))
-                                .collect(Collectors.toSet()).iterator().next();
-                        new InsertNodeChange(tx, leftCOMListNode, rightCOMListNode, rightRel);
-                        insertedRightCount.getAndIncrement();
-                    });
-                    tx.commit();
-                } catch (Exception e) {
-                    logger.error(e.getMessage() + " (F)\n" + Arrays.toString(e.getStackTrace()));
-                }
-                logger.info("-> {} inserted top-level features", insertedRightCount);
-            });
+            BatchUtils.toBatches(rightCOMIDs, 10 * config.MATCHER_TOPLEVEL_BATCH_SIZE)
+                    .forEach(batch -> esInsert.submit(() -> {
+                        try (Transaction tx = graphDb.beginTx()) {
+                            Node leftCOMListNode = tx.getNodeByElementId(tmpLeftCOMListID);
+                            Node rightCOMListNode = tx.getNodeByElementId(tmpRightCOMListID);
+                            batch.forEach(rightCOMID -> {
+                                Node rightCOMNode = tx.getNodeByElementId(rightCOMID);
+                                Relationship rightRel = rightCOMNode.getRelationships(Direction.INCOMING).stream()
+                                        .filter(r -> r.getStartNode().getElementId().equals(tmpRightCOMListID))
+                                        .collect(Collectors.toSet()).iterator().next();
+                                new InsertNodeChange(tx, leftCOMListNode, rightCOMListNode, rightRel);
+                                insertedRightCount.getAndIncrement();
+                            });
+                            tx.commit();
+                        } catch (Exception e) {
+                            logger.error(e.getMessage() + " (F)\n" + Arrays.toString(e.getStackTrace()));
+                        }
+                        logger.info("-> {} inserted top-level features", insertedRightCount);
+                    }));
 
             diffFound.set(true);
         }
+        Neo4jDB.finishThreads(esInsert, config.MATCHER_CONCURRENT_TIMEOUT);
         logger.info("Found {} inserted top-level features", insertedRightCount);
 
         dbStats.stopTimer("Match city models indexed at " + leftPartitionIndex + " and " + rightPartitionIndex);

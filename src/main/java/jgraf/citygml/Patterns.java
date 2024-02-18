@@ -180,7 +180,7 @@ public class Patterns {
         logger.info("|--> Applying pattern rules");
 
         // Init list of all top-level features // TODO Memory check?
-        List<String> nonDelToplevelIds = Collections.synchronizedList(new LinkedList<>());
+        List<String> nonDelToplevelIds = new ArrayList<>();
         try (Transaction tx = graphDb.beginTx()) {
             // Find all top-level features and their changes
             tx.findNodes(Label.label(Building.class.getName())).forEachRemaining(toplevel -> {

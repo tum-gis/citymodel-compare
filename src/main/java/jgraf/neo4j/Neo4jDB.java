@@ -488,7 +488,6 @@ public abstract class Neo4jDB implements GraphDB {
     }
 
     public static void finishThreads(ExecutorService executorService, long seconds) {
-        logger.info("Waiting for all threads to finish");
         executorService.shutdown();
         try {
             if (!executorService.awaitTermination(seconds, TimeUnit.SECONDS)) {

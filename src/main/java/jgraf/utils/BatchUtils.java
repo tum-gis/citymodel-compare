@@ -13,11 +13,11 @@ public class BatchUtils {
 
     // Divide a large queue into smaller queues of given size, while removing each element from the large queue
     public static <T> List<Queue<T>> toBatches(Queue<T> queue, int batchSize) {
-        List<Queue<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        List<Queue<T>> batches = new ArrayList<>();
         while (!queue.isEmpty()) {
-            Queue<T> batch = new ConcurrentLinkedQueue<>();
+            Queue<T> batch = new LinkedList<>();
             for (int i = 0; i < batchSize && !queue.isEmpty(); i++) {
-                batch.add(queue.poll());
+                batch.offer(queue.poll());
             }
             batches.add(batch);
         }
@@ -26,10 +26,10 @@ public class BatchUtils {
 
     // Divide a list into batches of given size, while removing each element from the list
     public static <T> List<List<T>> toBatches(List<T> list, int batchSize) {
-        List<List<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        List<List<T>> batches = new ArrayList<>();
         Iterator<T> iter = list.iterator();
         while (iter.hasNext()) {
-            List<T> batch = Collections.synchronizedList(new LinkedList<>());
+            List<T> batch = new ArrayList<>();
             for (int i = 0; i < batchSize && iter.hasNext(); i++) {
                 batch.add(iter.next());
                 iter.remove();
@@ -41,7 +41,7 @@ public class BatchUtils {
 
     // Divide a list into batches of given size, while NOT changing the original list
     public static <T> List<List<T>> toBatchesKeep(List<T> list, int batchSize) {
-        List<List<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        List<List<T>> batches = new ArrayList<>();
         for (int i = 0; i < list.size(); i += batchSize) {
             batches.add(list.subList(i, Math.min(i + batchSize, list.size())));
         }
@@ -50,10 +50,10 @@ public class BatchUtils {
 
     // Divide a set into batches of given size, while removing each element from the set
     public static <T extends Comparable<?>> List<Set<T>> toBatches(Set<T> set, int batchSize) {
-        List<Set<T>> batches = Collections.synchronizedList(new LinkedList<>());
+        List<Set<T>> batches = new ArrayList<>();
         Iterator<T> iter = set.iterator();
         while (iter.hasNext()) {
-            Set<T> batch = new ConcurrentSkipListSet<>();
+            Set<T> batch = new HashSet<>();
             for (int i = 0; i < batchSize && iter.hasNext(); i++) {
                 batch.add(iter.next());
                 iter.remove();
@@ -62,17 +62,6 @@ public class BatchUtils {
         }
         return batches;
     }
-
-    // Divide a set into batches of given size, while NOT changing the original set
-    public static <T extends Comparable<?>> List<Set<T>> toBatchesKeep(Set<T> set, int batchSize) {
-        List<Set<T>> batches = Collections.synchronizedList(new LinkedList<>());
-        List<T> list = new ArrayList<>(set);
-        for (int i = 0; i < list.size(); i += batchSize) {
-            batches.add(new ConcurrentSkipListSet<>(list.subList(i, Math.min(i + batchSize, list.size()))));
-        }
-        return batches;
-    }
-
 
     // Convert a stream to a stream of batches of given size
     // Source: https://stackoverflow.com/a/59164175/5360833

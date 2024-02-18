@@ -578,7 +578,7 @@ public class Patterns {
                     // Check if the found scope node satisfies the scope condition (global/clustered)
                     String scRel = rel.getProperty(_RuleRelPropNames.scope.toString()).toString();
                     String scNode = scope.get(_ScopePropNames.scope.toString());
-                    if (!scRel.trim().equals(scNode.trim())) return;
+                    if (scNode == null || !scRel.trim().equals(scNode.trim())) return;
 
                     // Create next change WITHOUT MEMORY NODE (which is only needed for non-top-level features)
                     Node nextChange = tx.createNode(Label.label(Change.class.getName()));

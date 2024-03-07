@@ -73,8 +73,10 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             AtomicLong tlCount = new AtomicLong();
             try (CityGMLReader reader = in.createCityGMLReader(file)) {
                 while (reader.hasNext()) {
+                    CityGMLChunk chunk = reader.nextChunk();
+
                     executorService.submit((Callable<Void>) () -> {
-                        AbstractFeature feature = reader.next();
+                        AbstractFeature feature = chunk.build();
                         tlCount.getAndIncrement();
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(feature,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);

@@ -74,6 +74,16 @@ What is needed:
     + `-p 7687:7687`: Expose port 7687 of the container to port 7687 of the host machine. This is the port used by the
       Neo4j Bolt connector (such as for RESTful services).
 
+   **Notes**: To simplify the process for testing purposes, the Docker container has already been loaded with
+   a test dataset. This dataset includes an older and a newer tiled CityGML dataset of Hamburg, from 2016 and 2022,
+   respectively,
+   which are publicly available [here](https://metaver.de/trefferanzeige?docuuid=2C1F2EEC-CF9F-4D8B-ACAC-79D8C1334D5E).
+
+   **Notes**: Once started, the datasets will be automatically mapped and matched, and their changes will be interpreted
+   and stored in the graph database. All from scratch, no existing Neo4j database instance is contained in the Docker
+   container beforehand.
+   Please refer to this [section](#how-to-use-my-own-datasets) for more details on how to use your own datasets.
+
 That's it! The old and new CityGML datasets have been mapped, matched, and interpreted. You are now ready to use the
 tool.
 

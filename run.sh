@@ -1,7 +1,8 @@
-# For experimenting with the docker image
+# Build container
 docker build --no-cache -t citymodel-compare .
-docker run -it --rm -p7474:7474 -p7687:7687 citymodel-compare
 
+# For experimenting with the docker image
+docker run -it --rm -p7474:7474 -p7687:7687 citymodel-compare
 # Run detached with name and tail logs
 docker run -d --name citymodel-compare -p7474:7474 -p7687:7687 citymodel-compare ; docker logs --tail 50 -f citymodel-compare
 

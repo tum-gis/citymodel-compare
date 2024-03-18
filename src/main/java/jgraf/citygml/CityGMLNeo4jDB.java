@@ -907,6 +907,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract double[] polygonBBox(Object polygon);
 
+    public abstract void testImportAndExport(String importFilePath, String exportFilePath);
+
     public void exportRTreeFootprints(String folderPath) {
         try {
             for (int i = 0; i < rtrees.length; i++) {

@@ -3,7 +3,10 @@ package jgraf.citygml;
 import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.Neo4jGraphRef;
-import jgraf.neo4j.factory.*;
+import jgraf.neo4j.factory.AuxNodeLabels;
+import jgraf.neo4j.factory.AuxPropNames;
+import jgraf.neo4j.factory.EdgeTypes;
+import jgraf.neo4j.factory.PropNames;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
 import org.apache.commons.geometry.euclidean.threed.*;
@@ -29,9 +32,7 @@ import org.citygml4j.model.citygml.relief.ReliefFeature;
 import org.citygml4j.model.citygml.transportation.AbstractTransportationObject;
 import org.citygml4j.model.citygml.tunnel.Tunnel;
 import org.citygml4j.model.citygml.vegetation.AbstractVegetationObject;
-import org.citygml4j.model.citygml.vegetation.PlantCover;
 import org.citygml4j.model.citygml.waterbody.AbstractWaterObject;
-import org.citygml4j.model.citygml.waterbody.WaterBody;
 import org.citygml4j.model.gml.base.AbstractGML;
 import org.citygml4j.model.gml.base.AssociationByRepOrRef;
 import org.citygml4j.model.gml.base.StringOrRef;
@@ -41,13 +42,19 @@ import org.citygml4j.model.gml.geometry.aggregates.MultiCurve;
 import org.citygml4j.model.gml.geometry.aggregates.MultiSurface;
 import org.citygml4j.model.gml.geometry.primitives.*;
 import org.citygml4j.model.gml.measures.Length;
+import org.citygml4j.model.module.ModuleContext;
+import org.citygml4j.model.module.citygml.CityGMLModuleType;
 import org.citygml4j.util.bbox.BoundingBoxOptions;
+import org.citygml4j.util.gmlid.DefaultGMLIdManager;
 import org.citygml4j.xml.io.CityGMLInputFactory;
+import org.citygml4j.xml.io.CityGMLOutputFactory;
 import org.citygml4j.xml.io.reader.*;
+import org.citygml4j.xml.io.writer.CityGMLWriteException;
+import org.citygml4j.xml.io.writer.CityGMLWriter;
+import org.citygml4j.xml.io.writer.FeatureWriteMode;
 import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.collection.immutable.Vector3;
 
 import java.io.File;
 import java.util.*;
@@ -1297,6 +1304,54 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         bbox[4] = maxY;
         bbox[5] = maxZ;
         return bbox;
+    }
+
+    @Override
+    public void testImportAndExport(String importFilePath, String exportFilePath) {
+        try (Transaction tx = graphDb.beginTx()) {
+            // IMPORT
+
+            Neo4jGraphRef cityModelRef = mapFileCityGML(importFilePath, 0, false);
+            Node cityModelNode = cityModelRef.getRepresentationNode(tx);
+
+            // EXPORT
+
+            CityGMLContext ctx = CityGMLContext.getInstance();
+            CityGMLBuilder builder = ctx.createCityGMLBuilder();
+            CityGMLInputFactory in = builder.createCityGMLInputFactory();
+            //in.parseSchema(new File("datasets/schemas/CityGML-NoiseADE-2_0_0.xsd"));
+
+            CityGMLOutputFactory out = builder.createCityGMLOutputFactory(in.getSchemaHandler());
+            ModuleContext moduleContext = new ModuleContext(); // v2.0.0
+            FeatureWriteMode writeMode = FeatureWriteMode.SPLIT_PER_COLLECTION_MEMBER; // SPLIT_PER_COLLECTION_MEMBER;
+
+            // set to true and check the differences
+            boolean splitOnCopy = false;
+
+            out.setModuleContext(moduleContext);
+            out.setGMLIdManager(DefaultGMLIdManager.getInstance());
+            out.setProperty(CityGMLOutputFactory.FEATURE_WRITE_MODE, writeMode);
+            out.setProperty(CityGMLOutputFactory.SPLIT_COPY, splitOnCopy);
+
+            //out.setProperty(CityGMLOutputFactory.EXCLUDE_FROM_SPLITTING, ADEComponent.class);
+
+            CityGMLWriter writer = out.createCityGMLWriter(new File(exportFilePath), "utf-8");
+            writer.setPrefixes(moduleContext);
+            writer.setDefaultNamespace(moduleContext.getModule(CityGMLModuleType.CORE));
+            writer.setIndentString("  ");
+            writer.setHeaderComment("written by citygml4j",
+                    "using a CityGMLWriter instance",
+                    "Split mode: " + writeMode,
+                    "Split on copy: " + splitOnCopy);
+
+            CityModel cityModel = (CityModel) toObject(cityModelNode);
+            writer.write(cityModel);
+            writer.close();
+            logger.info("CityGML file written to {}", exportFilePath);
+            tx.commit();
+        } catch (CityGMLBuilderException | CityGMLWriteException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // TODO This is used to convert list strings to list of doubles -> Check if this is still needed

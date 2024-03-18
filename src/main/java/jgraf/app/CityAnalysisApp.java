@@ -10,7 +10,7 @@ public class CityAnalysisApp {
 
     private static void analyseCityGMLV2() throws InterruptedException {
         CityGMLNeo4jDBV2 cityGMLNeo4jDB
-                = new CityGMLNeo4jDBV2(new CityGMLNeo4jDBConfig("config/citygmlv2.conf"));
+                = new CityGMLNeo4jDBV2(new CityGMLNeo4jDBConfig("config/citygmlv2.conf")); // testMapv2.conf
         cityGMLNeo4jDB.open();
         cityGMLNeo4jDB.mapFromConfig();
         cityGMLNeo4jDB.diff(0, 1);
@@ -18,6 +18,15 @@ public class CityAnalysisApp {
         cityGMLNeo4jDB.summarize();
         //cityGMLNeo4jDB.close();
         cityGMLNeo4jDB.remainOpen();
+    }
+
+    private static void importAndExportV2(String importFilePath, String exportFilePath) throws InterruptedException {
+        CityGMLNeo4jDBV2 cityGMLNeo4jDB
+                = new CityGMLNeo4jDBV2(new CityGMLNeo4jDBConfig("config/citygmlv2.conf"));
+        cityGMLNeo4jDB.open();
+        cityGMLNeo4jDB.testImportAndExport(importFilePath, exportFilePath);
+        cityGMLNeo4jDB.close();
+        // cityGMLNeo4jDB.remainOpen();
     }
 
     private static void analyseCityGMLV3() throws InterruptedException {
@@ -53,6 +62,8 @@ public class CityAnalysisApp {
 
     public static void main(String[] args) throws InterruptedException {
         analyseCityGMLV2();
+        //importAndExportV2("input/fzk_haus_lod4_v2.gml", "output/citygml/fzk_haus_lod4_v2_export.gml");
+        //importAndExportV2("input/railway_scene_lod3_v2/railway_scene_lod3_v2.gml", "output/citygml/railway_scene_lod3_v2_export.gml");
         //analyseInputCityGMLFiles();
     }
 }

@@ -163,6 +163,12 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected boolean isCOMTopLevel(Node cityObjectMemberNode) {
+        // TODO
+        return false;
+    }
+
+    @Override
     protected boolean isTopLevel(Node node) {
         // TODO
         return false;
@@ -170,6 +176,11 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
 
     @Override
     protected boolean isTopLevel(Object object) {
+        return object instanceof AbstractCityObject;
+    }
+
+    @Override
+    protected String getCOMElementId(Transaction tx, Neo4jGraphRef topLevelRef) {
         // TODO
         return true;
     }

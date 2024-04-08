@@ -190,23 +190,41 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected boolean isCOMTopLevel(Node cityObjectMemberNode) {
+        return isTopLevel(
+                cityObjectMemberNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode());
+    }
+
+    @Override
     protected boolean isTopLevel(Node node) {
-        return node.hasLabel(Label.label(CityObjectMember.class.getName()));
+        return StreamSupport.stream(node.getLabels().spliterator(), false)
+                .anyMatch(label -> {
+                    try {
+                        if (CityObjectGroup.class.isAssignableFrom(Class.forName(label.name()))) {
+                            // TODO Skip CityObjectGroup for now
+                            return false;
+                        }
+                        return AbstractCityObject.class.isAssignableFrom(Class.forName(label.name()));
+                    } catch (ClassNotFoundException e) {
+                        return false;
+                    }
+                });
     }
 
     @Override
     protected boolean isTopLevel(Object obj) {
-        return obj instanceof Building
-                || obj instanceof Bridge
-                || obj instanceof Tunnel
-                || obj instanceof CityFurniture
-                || obj instanceof CityObjectGroup
-                || obj instanceof GenericCityObject
-                || obj instanceof LandUse
-                || obj instanceof ReliefFeature
-                || obj instanceof AbstractTransportationObject
-                || obj instanceof AbstractVegetationObject
-                || obj instanceof AbstractWaterObject;
+        return obj instanceof AbstractCityObject;
+    }
+
+    @Override
+    protected String getCOMElementId(Transaction tx, Neo4jGraphRef topLevelRef) {
+        return topLevelRef.getRepresentationNode(tx)
+                .getRelationships(Direction.INCOMING, EdgeTypes.object).stream()
+                // There maybe multiple incoming relationships "object" (due to CityObjectMember and CityObjectGroup)
+                // -> choose the one with CityObjectMember
+                // TODO Also consider CityObjectGroup?
+                .filter(rel -> rel.getStartNode().hasLabel(Label.label(CityObjectMember.class.getName())))
+                .findFirst().get().getStartNode().getElementId();
     }
 
     @Override
@@ -218,7 +236,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     @Override
     protected PriorityQueue<Map.Entry<String, Double>> findBestTopLevel(Transaction tx, Relationship leftRel, Node rightNode) {
         Node leftRelNode = leftRel.getEndNode();
-        if (!isTopLevel(leftRelNode)) {
+        if (!isCOMTopLevel(leftRelNode)) {
             throw new RuntimeException("Expected top-level feature, found " + ClazzUtils.getSimpleClassName(leftRelNode));
         }
 

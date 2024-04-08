@@ -390,8 +390,18 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             leftCOMListID = leftCOMListNode.getElementId();
             rightCOMListID = rightCOMListNode.getElementId();
 
-            leftCOMListNode.getRelationships(Direction.OUTGOING).forEach(r -> leftCOMIDs.add(r.getEndNode().getElementId()));
-            rightCOMListNode.getRelationships(Direction.OUTGOING).forEach(r -> rightCOMIDs.add(r.getEndNode().getElementId()));
+            leftCOMListNode.getRelationships(Direction.OUTGOING)
+                    .forEach(r -> {
+                        Node cityObjectMemberNode = r.getEndNode();
+                        if (!isCOMTopLevel(cityObjectMemberNode)) return;
+                        leftCOMIDs.add(cityObjectMemberNode.getElementId());
+                    });
+            rightCOMListNode.getRelationships(Direction.OUTGOING)
+                    .forEach(r -> {
+                        Node cityObjectMemberNode = r.getEndNode();
+                        if (!isCOMTopLevel(cityObjectMemberNode)) return;
+                        rightCOMIDs.add(cityObjectMemberNode.getElementId());
+                    });
 
             tx.commit();
         } catch (Exception e) {
@@ -474,9 +484,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     // Split change: 1 from deleted left + multiple from inserted right
                     Map<Neo4jGraphRef, Rectangle> partCandidates = new HashMap<>();
                     rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
-                        if (!rightCOMIDs.contains(entry.value().getRepresentationNode(tx)
-                                .getSingleRelationship(EdgeTypes.object, Direction.INCOMING).getStartNode()
-                                .getElementId())) return;
+                        if (!rightCOMIDs.contains(getCOMElementId(tx, entry.value()))) return;
                         Rectangle rightRectangle = (Rectangle) entry.geometry();
                         // Check for overlapping
                         double overlap = leftRectangle.intersectionArea(rightRectangle);
@@ -807,6 +815,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         dbStats.stopTimer("Create rule network and match change patterns");
     }
 
+    protected abstract boolean isCOMTopLevel(Node cityObjectMemberNode);
+
     protected abstract boolean isTopLevel(Node node);
 
     protected abstract boolean isTopLevel(Object obj);
@@ -886,6 +896,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         }
         return anchorNodes.get(0);
     }
+
+    protected abstract String getCOMElementId(Transaction tx, Neo4jGraphRef topLevelRef); // COM = CityObjectMember
 
     protected abstract List<Label> skipLabelsForTopLevel();
 

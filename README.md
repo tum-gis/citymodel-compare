@@ -489,8 +489,9 @@ The following features will be added soon:
 
 This tool is part of the following publications:
 
-**Nguyen, Son H.; Kolbe, Thomas H.**: _Identification and Interpretation of Change Patterns in Semantic 3D City Models_.
-Proceedings of the 18th International 3D GeoInfo Conference 2023, Springer Verlag, 2023. TBA.
+**Nguyen, Son H.; Kolbe, Thomas H.**: [_Identification and Interpretation of Change Patterns in 
+Semantic 3D City Models_](https://mediatum.ub.tum.de/doc/1730733/1730733.pdf). Lecture Notes in Geoinformation and Cartography - Recent Advances in 3D Geoinformation Science - 
+Proceedings of the 18th 3D GeoInfo Conference, Springer, 2023.
 
 **Nguyen, Son H.; Kolbe, Thomas H.**: [_Path-tracing Semantic Networks to Interpret Changes in Semantic 3D City
 Models_](https://www.isprs-ann-photogramm-remote-sens-spatial-inf-sci.net/X-4-W2-2022/217/2022/).

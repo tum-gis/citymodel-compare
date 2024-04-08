@@ -23,7 +23,7 @@ public class GraphUtils {
                 || Boolean.parseBoolean(geomNode.getProperty(AuxPropNames.GEOM_VALID.toString()).toString());
     }
 
-    public static double[] getBoundingBox(Node abstractCityObjectNode) { // Building or BuildingPart // TODO This is momentarily only in CityGML v2
+    public static double[] getBoundingBox(Node abstractCityObjectNode) { // TODO This is momentarily only in CityGML v2
         try {
             Node envelope = abstractCityObjectNode
                     .getSingleRelationship(EdgeTypes.boundedBy, Direction.OUTGOING).getEndNode()

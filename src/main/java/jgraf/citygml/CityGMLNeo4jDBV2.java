@@ -327,7 +327,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         Node leftRelNode = leftRel.getEndNode();
 
         // Error tolerance for matching numerics and geometries
-        Precision.DoubleEquivalence precision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_LENGTHS);
+        Precision.DoubleEquivalence lengthPrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_LENGTHS);
         Precision.DoubleEquivalence translationPrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TRANSLATION_DISTANCE);
         Precision.DoubleEquivalence anglePrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_ANGLES);
 
@@ -423,11 +423,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResult(SimilarityLevel.NONE, 0));
         }
 
-        // TODO BridgePartProperty, TunnelPartProperty
-
         // TODO Consider change in SRS/CRS?
 
-        // TODO Aggregation surfaces (multisurfaces, composite surfaces)
+        // TODO Aggregation surfaces (composite surfaces)
 
         // Vector init norm = sqrt(3a^2) <= t => a <= t/sqrt(3)
         double maxAllowed = config.MATCHER_TRANSLATION_DISTANCE / Math.sqrt(3);
@@ -670,7 +668,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     tmpLeftBbox[4] - tmpLeftBbox[1],
                     tmpLeftBbox[5] - tmpLeftBbox[2]
             );
-            List<Line3D> leftLines = multiCurveToLines3D(leftMultiCurve, precision);
+            List<Line3D> leftLines = multiCurveToLines3D(leftMultiCurve, lengthPrecision);
             if (leftLines == null) {
                 GraphUtils.markGeomInvalid(tx, leftRelNode);
                 return new AbstractMap.SimpleEntry<>(null,
@@ -698,26 +696,26 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         tmpRightBbox[4] - tmpRightBbox[1],
                         tmpRightBbox[5] - tmpRightBbox[2]
                 );
-                List<Line3D> rightLines = multiCurveToLines3D(rightMultiCurve, precision);
+                List<Line3D> rightLines = multiCurveToLines3D(rightMultiCurve, lengthPrecision);
                 if (rightLines == null) {
                     GraphUtils.markGeomInvalid(tx, rightRelNode);
                     continue;
                 }
 
                 // First, test if same size
-                if (leftSizes.eq(rightSizes, precision)) {
+                if (leftSizes.eq(rightSizes, lengthPrecision)) {
                     Vector3D translation = rightCentroid.subtract(leftCentroid);
-                    if (translation.eq(Vector3D.ZERO, precision)) {
+                    if (translation.eq(Vector3D.ZERO, lengthPrecision)) {
                         // Zero translation -> Proceed to check if all points of one curve are contained in the other
-                        if (isMultiCurveContainedInLines3D(leftMultiCurve, rightLines, precision)
-                                && isMultiCurveContainedInLines3D(rightMultiCurve, leftLines, precision)) {
+                        if (isMultiCurveContainedInLines3D(leftMultiCurve, rightLines, lengthPrecision)
+                                && isMultiCurveContainedInLines3D(rightMultiCurve, leftLines, lengthPrecision)) {
                             logger.debug("Found the best matching candidate for {} without translation",
                                     ClazzUtils.getSimpleClassName(leftRelNode));
                             return new AbstractMap.SimpleEntry<>(rightRelNode,
                                     new DiffResultGeo(
                                             SimilarityLevel.SIMILAR_GEOMETRY,
                                             1,
-                                            Arrays.asList(Label.label(LineString.class.getName())), // TODO Label list to skip for MultiCurves
+                                            List.of(Label.label(LineString.class.getName())), // TODO Label list to skip for MultiCurves
                                             null
                                     ));
                         }
@@ -731,8 +729,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             Vector3D.of(-translation.getX(), -translation.getY(), -translation.getZ()));
                     List<Line3D> translatedLeftLines = leftLines.stream().map(line -> line.transform(matLR)).toList();
                     List<Line3D> translatedRightLines = rightLines.stream().map(line -> line.transform(matRL)).toList();
-                    if (isMultiCurveContainedInLines3D(leftMultiCurve, translatedRightLines, precision)
-                            && isMultiCurveContainedInLines3D(rightMultiCurve, translatedLeftLines, precision)) {
+                    if (isMultiCurveContainedInLines3D(leftMultiCurve, translatedRightLines, lengthPrecision)
+                            && isMultiCurveContainedInLines3D(rightMultiCurve, translatedLeftLines, lengthPrecision)) {
                         // Search for the min non-zero translation
                         double translationNorm = translation.norm();
                         if (translationNorm < minTranslationNorm) {
@@ -752,7 +750,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             return new AbstractMap.SimpleEntry<>(candidate,
                     new DiffResultGeoTranslation(
                             minTranslation.toArray(),
-                            Arrays.asList(Label.label(LineString.class.getName())), // TODO Label list to skip for polygons
+                            List.of(Label.label(LineString.class.getName())), // TODO Label list to skip for polygons
                             null
                     ));
         }
@@ -804,7 +802,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 })
                 .map(Label::name)
                 .toList();
-        if (probeGen.size() > 0) {
+        if (!probeGen.isEmpty()) {
             String genClassLabel = probeGen.get(0);
             // Find corresponding candidates
             List<Node> candidates = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
@@ -816,38 +814,32 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             List<Node> filteredCandidates = candidates.stream()
                     .filter(rightRelNode -> {
                         AbstractGenericAttribute rightObj = (AbstractGenericAttribute) toObject(rightRelNode);
-                        if (leftObj instanceof IntAttribute) {
-                            IntAttribute leftGen = (IntAttribute) leftObj;
+                        if (leftObj instanceof IntAttribute leftGen) {
                             IntAttribute rightGen = (IntAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
                                     && leftGen.getValue().equals(rightGen.getValue());
                         }
-                        if (leftObj instanceof DoubleAttribute) {
-                            DoubleAttribute leftGen = (DoubleAttribute) leftObj;
+                        if (leftObj instanceof DoubleAttribute leftGen) {
                             DoubleAttribute rightGen = (DoubleAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
-                                    && precision.compare(leftGen.getValue(), rightGen.getValue()) == 0;
+                                    && lengthPrecision.compare(leftGen.getValue(), rightGen.getValue()) == 0;
                         }
-                        if (leftObj instanceof DateAttribute) {
-                            DateAttribute leftGen = (DateAttribute) leftObj;
+                        if (leftObj instanceof DateAttribute leftGen) {
                             DateAttribute rightGen = (DateAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
                                     && leftGen.getValue().equals(rightGen.getValue());
                         }
-                        if (leftObj instanceof MeasureAttribute) {
-                            MeasureAttribute leftGen = (MeasureAttribute) leftObj;
+                        if (leftObj instanceof MeasureAttribute leftGen) {
                             MeasureAttribute rightGen = (MeasureAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
-                                    && compareMeasurements(leftGen.getValue(), rightGen.getValue());
+                                    && compareMeasurements(leftGen.getValue(), rightGen.getValue()) == 0;
                         }
-                        if (leftObj instanceof StringAttribute) {
-                            StringAttribute leftGen = (StringAttribute) leftObj;
+                        if (leftObj instanceof StringAttribute leftGen) {
                             StringAttribute rightGen = (StringAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
                                     && leftGen.getValue().equals(rightGen.getValue());
                         }
-                        if (leftObj instanceof UriAttribute) {
-                            UriAttribute leftGen = (UriAttribute) leftObj;
+                        if (leftObj instanceof UriAttribute leftGen) {
                             UriAttribute rightGen = (UriAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
                                     && leftGen.getValue().equals(rightGen.getValue());
@@ -858,7 +850,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     })
                     .toList();
             // Found one or more exact matching candidates
-            if (filteredCandidates.size() >= 1) {
+            if (!filteredCandidates.isEmpty()) {
                 // logger.debug("Found {} exact candidates for generic attribute {}", filteredCandidates.size(), leftObj.getName());
                 return new AbstractMap.SimpleEntry<>(filteredCandidates.get(0),
                         new DiffResult(SimilarityLevel.EQUIVALENCE, 0));
@@ -871,7 +863,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 && leftObj.getName().equals(rightObj.getName());
                     })
                     .toList();
-            if (filteredNamedCandidates.size() >= 1) {
+            if (!filteredNamedCandidates.isEmpty()) {
                 // logger.debug("Found {} candidates for generic attribute of the same name {}", filteredNamedCandidates.size(), leftObj.getName());
                 return new AbstractMap.SimpleEntry<>(filteredNamedCandidates.get(0),
                         new DiffResult(SimilarityLevel.SAME_LABELS, 0));
@@ -893,10 +885,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         if (!rightRelNode.hasLabel(Label.label(Measure.class.getName()))
                                 && !rightRelNode.hasLabel(Label.label(Length.class.getName()))) return false;
                         Measure rightMeasure = (Measure) toObject(rightRelNode);
-                        return compareMeasurements(leftMeasure, rightMeasure);
+                        return compareMeasurements(leftMeasure, rightMeasure) == 0;
                     })
                     .toList();
-            if (candidates.size() == 0) {
+            if (candidates.isEmpty()) {
                 // If there is only one measured height -> select it for diff instead of null/empty
                 if (count.get() == 1) {
                     return new AbstractMap.SimpleEntry<>(
@@ -949,9 +941,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             */
-            if (rightRels.size() > 1)
-                throw new RuntimeException(
-                        "Found multiple nodes of the same partition having the same ID = " + id);
+            if (rightRels.size() > 1) {
+                logger.error("Found multiple relationships with the same gml:id = {}", id);
+            }
             // Found a node using its array/collection index
             if (rightRels.size() == 1) {
                 return new AbstractMap.SimpleEntry<>(rightRels.iterator().next().getEndNode(),

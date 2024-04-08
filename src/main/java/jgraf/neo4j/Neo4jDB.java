@@ -140,7 +140,7 @@ public abstract class Neo4jDB implements GraphDB {
         return neo4JGraphRef;
     }
 
-    private Node map(Transaction tx, Object source, IdentityHashMap<Object, Node> mapped, String... partitionLabels) throws IllegalAccessException {
+    protected Node map(Transaction tx, Object source, IdentityHashMap<Object, Node> mapped, String... partitionLabels) throws IllegalAccessException {
         if (source == null) return null;
         Class<?> clazz = source.getClass();
         for (Class<?> cl = clazz; cl != Object.class; cl = cl.getSuperclass()) {

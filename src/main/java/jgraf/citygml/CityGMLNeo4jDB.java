@@ -408,7 +408,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
             logger.error(e.getMessage() + " (C)\n" + Arrays.toString(e.getStackTrace()));
         }
 
-        // Multi-threaded matching
+        // Multithreaded matching
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         String tmpLeftCOMListID = leftCOMListID;
         String tmpRightCOMListID = rightCOMListID;

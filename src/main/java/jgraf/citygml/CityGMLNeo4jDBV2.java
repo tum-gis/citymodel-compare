@@ -854,6 +854,34 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             // TODO Further checks for rotation, etc. (remember to use continue; to skip other checks below)
         }
 
+        // Implicit geometries
+        if (leftRelNode.hasLabel(Label.label(ImplicitRepresentationProperty.class.getName()))) {
+            ImplicitRepresentationProperty leftIRP = (ImplicitRepresentationProperty) toObject(leftRelNode);
+            String leftId = leftIRP.getImplicitGeometry().getRelativeGMLGeometry().getGeometry().getId();
+
+            for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
+                Node rightRelNode = rightRel.getEndNode();
+                ImplicitRepresentationProperty rightIRP = (ImplicitRepresentationProperty) toObject(rightRelNode);
+                String rightId = leftIRP.getImplicitGeometry().getRelativeGMLGeometry().getGeometry().getId();
+
+                // Implicit geometries are defined once and referenced using IDs -> match IDs
+                if (leftId.equals(rightId)) {
+                    logger.debug("Found the best matching candidate for {} with same ID",
+                            ClazzUtils.getSimpleClassName(leftRelNode));
+                    return new AbstractMap.SimpleEntry<>(rightRelNode,
+                            new DiffResultGeo(
+                                    SimilarityLevel.SIMILAR_GEOMETRY,
+                                    1,
+                                    List.of(Label.label(GeometryProperty.class.getName())),
+                                    null
+                            ));
+                }
+            }
+
+            return new AbstractMap.SimpleEntry<>(null,
+                    new DiffResult(SimilarityLevel.NONE, 0));
+        }
+
         // MultiCurves that contain LineStrings
         if (leftRelNode.hasLabel(Label.label(MultiCurve.class.getName()))) {
             MultiCurve leftMultiCurve = (MultiCurve) toObject(leftRelNode);

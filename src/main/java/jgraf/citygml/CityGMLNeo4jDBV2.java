@@ -1152,35 +1152,13 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResult(SimilarityLevel.EQUIVALENCE, 0));
         }
 
-        // Non-geometric non-generic nodes -> Match using array / collection index
-        String indexType;
-        if (leftRel.hasProperty(AuxPropNames.ARRAY_INDEX.toString()))
-            indexType = AuxPropNames.ARRAY_INDEX.toString();
-        else if (leftRel.hasProperty(AuxPropNames.COLLECTION_INDEX.toString()))
-            indexType = AuxPropNames.COLLECTION_INDEX.toString();
-        else indexType = null;
-        if (indexType != null) {
-            final int index = Integer.parseInt(leftRel.getProperty(indexType).toString());
-            Set<Relationship> rightRels = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
-                    .filter(r -> r.hasProperty(indexType)
-                            && Integer.parseInt(r.getProperty(indexType).toString()) == index)
-                    .collect(Collectors.toSet());
-            if (rightRels.isEmpty())
-                return new AbstractMap.SimpleEntry<>(null,
-                        new DiffResult(SimilarityLevel.NONE, 0));
-            if (rightRels.size() > 1)
-                throw new RuntimeException(
-                        "Found multiple relationships of the same " + indexType + " = " + index);
-            // Found a node using its array/collection index
-            return new AbstractMap.SimpleEntry<>(rightRels.iterator().next().getEndNode(),
-                    new DiffResult(SimilarityLevel.SAME_LABELS, 0));
-        }
-
-        // Non-array and non-collection nodes -> Match by gmlid
+        // Match by gmlid
         String id;
-        if (leftRelNode.hasProperty(PropNames.id.toString()))
+        if (leftRelNode.hasProperty(PropNames.id.toString())) {
             id = leftRelNode.getProperty(PropNames.id.toString()).toString();
-        else id = null;
+        } else {
+            id = null;
+        }
         if (id != null) {
             Set<Relationship> rightRels = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
                     .filter(r -> r.getEndNode().hasProperty(PropNames.id.toString())

@@ -1225,6 +1225,30 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         }
         */
 
+        // Match using array / collection index
+        String indexType;
+        if (leftRel.hasProperty(AuxPropNames.ARRAY_INDEX.toString()))
+            indexType = AuxPropNames.ARRAY_INDEX.toString();
+        else if (leftRel.hasProperty(AuxPropNames.COLLECTION_INDEX.toString()))
+            indexType = AuxPropNames.COLLECTION_INDEX.toString();
+        else indexType = null;
+        if (indexType != null) {
+            final int index = Integer.parseInt(leftRel.getProperty(indexType).toString());
+            Set<Relationship> rightRels = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
+                    .filter(r -> r.hasProperty(indexType)
+                            && Integer.parseInt(r.getProperty(indexType).toString()) == index)
+                    .collect(Collectors.toSet());
+            if (rightRels.isEmpty())
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            if (rightRels.size() > 1)
+                throw new RuntimeException(
+                        "Found multiple relationships of the same " + indexType + " = " + index);
+            // Found a node using its array/collection index
+            return new AbstractMap.SimpleEntry<>(rightRels.iterator().next().getEndNode(),
+                    new DiffResult(SimilarityLevel.SAME_LABELS, 0));
+        }
+
         // TODO Other objects
 
         // If rel type is 1:1 and nodes have the same label

@@ -8,7 +8,7 @@ docker build --no-cache -t citymodel-compare .
 
 # For experimenting with the docker image
 docker run -it --rm -p7474:7474 -p7687:7687 citymodel-compare
-# Run detached with name and tail logs
+# OR Run detached with name and tail logs
 docker run -d --name citymodel-compare -p7474:7474 -p7687:7687 citymodel-compare ; docker logs --tail 50 -f citymodel-compare
 
 # For production, it is recommended to build the JAR and include it in the ENTRYPOINT of the Dockerfile
@@ -18,6 +18,9 @@ docker run -d --name citymodel-compare -p7474:7474 -p7687:7687 citymodel-compare
 # Tag and push the image to Docker Hub
 docker tag citymodel-compare sonnguyentum/citymodel-compare:1.0.0
 docker push sonnguyentum/citymodel-compare:1.0.0
+# OR For dev purposes
+docker tag citymodel-compare sonnguyentum/citymodel-compare:1.0.0-dev
+docker push sonnguyentum/citymodel-compare:1.0.0-dev
 ```
 
 ## Neo4j (Linux)

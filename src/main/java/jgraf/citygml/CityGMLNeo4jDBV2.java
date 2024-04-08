@@ -2,6 +2,7 @@ package jgraf.citygml;
 
 import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Rectangle;
+import com.google.common.collect.Maps;
 import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.factory.AuxNodeLabels;
@@ -19,25 +20,23 @@ import org.citygml4j.builder.jaxb.CityGMLBuilderException;
 import org.citygml4j.core.model.CityGMLVersion;
 import org.citygml4j.geometry.Matrix;
 import org.citygml4j.model.citygml.CityGML;
-import org.citygml4j.model.citygml.bridge.Bridge;
+import org.citygml4j.model.citygml.bridge.BridgePartProperty;
 import org.citygml4j.model.citygml.building.*;
-import org.citygml4j.model.citygml.cityfurniture.CityFurniture;
 import org.citygml4j.model.citygml.cityobjectgroup.CityObjectGroup;
-import org.citygml4j.model.citygml.core.AbstractCityObject;
-import org.citygml4j.model.citygml.core.CityModel;
-import org.citygml4j.model.citygml.core.CityObjectMember;
+import org.citygml4j.model.citygml.core.*;
 import org.citygml4j.model.citygml.generics.*;
-import org.citygml4j.model.citygml.landuse.LandUse;
-import org.citygml4j.model.citygml.relief.ReliefFeature;
-import org.citygml4j.model.citygml.transportation.AbstractTransportationObject;
-import org.citygml4j.model.citygml.tunnel.Tunnel;
-import org.citygml4j.model.citygml.vegetation.AbstractVegetationObject;
-import org.citygml4j.model.citygml.waterbody.AbstractWaterObject;
+import org.citygml4j.model.citygml.tunnel.TunnelPartProperty;
+import org.citygml4j.model.citygml.vegetation.SolitaryVegetationObject;
+import org.citygml4j.model.common.child.ChildList;
 import org.citygml4j.model.gml.base.AbstractGML;
 import org.citygml4j.model.gml.base.AssociationByRepOrRef;
+import org.citygml4j.model.gml.base.CoordinateListProvider;
 import org.citygml4j.model.gml.base.StringOrRef;
+import org.citygml4j.model.gml.basicTypes.Code;
 import org.citygml4j.model.gml.basicTypes.Measure;
 import org.citygml4j.model.gml.feature.BoundingShape;
+import org.citygml4j.model.gml.feature.FeatureProperty;
+import org.citygml4j.model.gml.geometry.GeometryProperty;
 import org.citygml4j.model.gml.geometry.aggregates.MultiCurve;
 import org.citygml4j.model.gml.geometry.aggregates.MultiSurface;
 import org.citygml4j.model.gml.geometry.primitives.*;
@@ -58,6 +57,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -78,13 +78,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected void setBoundingShape(Object cityObject) {
-        if (cityObject instanceof AbstractCityObject object) {
-            object.setBoundedBy(object.calcBoundedBy(BoundingBoxOptions.defaults().useExistingEnvelopes(true)));
-        }
-    }
-
-    @Override
     protected Neo4jGraphRef mapFileCityGML(String filePath, int partitionIndex, boolean connectToRoot) {
         final Neo4jGraphRef[] cityModelRef = {null};
         try {
@@ -101,6 +94,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             CityGMLReader reader = in.createCityGMLReader(new File(filePath));
             logger.info("Reading CityGML v2.0 file {} chunk-wise into main memory", filePath);
 
+            // Ids of top-level features with no existing bounding shapes
+            List<Neo4jGraphRef> topLevelNoBbox = Collections.synchronizedList(new ArrayList<>());
+
             // Multi-threading
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             long tlCount = 0;
@@ -112,15 +108,23 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 executorService.execute(() -> {
                     try {
                         CityGML object = chunk.unmarshal();
+                        boolean toUpdateBboxTL = preProcessMapping(object);
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(object,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
-                        partitionMapPostProcessing(object, graphRef, partitionIndex, connectToRoot);
+                        postProcessMapping(toUpdateBboxTL, object, graphRef, partitionIndex, topLevelNoBbox);
                         logger.info("Mapped {} top-level features", finalTlCount);
 
                         if (object instanceof CityModel) {
                             if (cityModelRef[0] != null)
                                 throw new RuntimeException("Found multiple CityModel objects in one file");
                             cityModelRef[0] = graphRef;
+                            if (connectToRoot) {
+                                //  Connect MAPPER root node with this CityModel
+                                connectCityModelToRoot(graphRef, Map.of(
+                                        AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex,
+                                        AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), CityModel.class.getName()
+                                ));
+                            }
                         }
                     } catch (UnmarshalException | MissingADESchemaException e) {
                         throw new RuntimeException(e);
@@ -145,10 +149,39 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             setIndexesIfNew();
             resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
             dbStats.stopTimer("Resolve links of input file [" + partitionIndex + "]");
+
+            dbStats.startTimer();
+            logger.info("Calculate and map bounding boxes of top-level features");
+            calcTLBbox(topLevelNoBbox, partitionIndex);
+            dbStats.stopTimer("Calculate and map bounding boxes of top-level features");
+
+            logger.info("Finished mapping file {}", filePath);
         } catch (CityGMLBuilderException | CityGMLReadException e) {
             throw new RuntimeException(e);
         }
         return cityModelRef[0];
+    }
+
+    @Override
+    protected boolean preProcessMapping(Object chunk) {
+        boolean toUpdateBboxTL = toUpdateBboxTL(chunk);
+        if (toUpdateBboxTL) ((AbstractCityObject) chunk).setBoundedBy(null);
+        return toUpdateBboxTL;
+    }
+
+    @Override
+    protected void postProcessMapping(boolean toUpdateBboxTL, Object chunk, Neo4jGraphRef graphRef, int partitionIndex, List<Neo4jGraphRef> topLevelNoBbox) {
+        if (!isTopLevel(chunk)) return;
+        if (toUpdateBboxTL) topLevelNoBbox.add(graphRef);
+        else {
+            BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
+            if (boundingShape == null) {
+                logger.debug("Bounding shape does not exist for top-level feature {}, will be calculated after XLink resolution", chunk.getClass().getName());
+                topLevelNoBbox.add(graphRef);
+                return;
+            }
+            addToRtree(boundingShape, graphRef, partitionIndex);
+        }
     }
 
     @Override
@@ -157,12 +190,64 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected void partitionMapPostProcessing(Object chunk, Neo4jGraphRef graphRef, int partitionIndex, boolean connectToRoot) {
-        if (chunk instanceof AbstractCityObject && isTopLevel(chunk)) {
-            // Add top-level features to RTree index
-            BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
-            if (boundingShape == null) return;
-            Envelope envelope = boundingShape.getEnvelope();
+    protected boolean toUpdateBboxTL(Object chunk) {
+        if (!isTopLevel(chunk)) return false;
+        AbstractCityObject aco = (AbstractCityObject) chunk;
+        return aco.getBoundedBy() == null
+                || aco.getLodRepresentation().hasLodImplicitGeometries()
+                || aco.getLodRepresentation().hasImplicitGeometries();
+    }
+
+    @Override
+    protected void calcTLBbox(List<Neo4jGraphRef> topLevelNoBbox, int partitionIndex) {
+        if (topLevelNoBbox == null) return;
+        // Multithreaded
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        BatchUtils.toBatches(topLevelNoBbox, 10 * config.MATCHER_TOPLEVEL_BATCH_SIZE)
+                .forEach(batch -> executorService.submit((Callable<Void>) () -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(graphRef -> {
+                            // Calculate bounding shape
+                            Node topLevelNode = graphRef.getRepresentationNode(tx);
+                            if (topLevelNode.hasLabel(Label.label(SolitaryVegetationObject.class.getName()))) {
+                                System.out.println();
+                            }
+                            AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode);
+                            BoundingShape boundingShape = aco.calcBoundedBy(BoundingBoxOptions.defaults().assignResultToFeatures(true));
+                            if (boundingShape == null) {
+                                logger.warn("Bounding shape not found for top-level feature {}, ignoring", aco.getClass().getName());
+                                return;
+                            }
+                            Node boundingShapeNode;
+                            try {
+                                boundingShapeNode = map(tx, boundingShape, new IdentityHashMap<>(), AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
+                            } catch (IllegalAccessException e) {
+                                logger.error("Error mapping bounding shape for top-level feature {}, {}",
+                                        aco.getClass().getName(), e.getMessage());
+                                throw new RuntimeException(e);
+                            }
+                            topLevelNode.createRelationshipTo(boundingShapeNode, EdgeTypes.boundedBy);
+
+                            // Add top-level features to RTree index
+                            addToRtree(boundingShape, graphRef, partitionIndex);
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                    return null;
+                }));
+        Neo4jDB.finishThreads(executorService, config.MATCHER_CONCURRENT_TIMEOUT);
+    }
+
+    @Override
+    protected void addToRtree(Object boundingShape, Neo4jGraphRef graphRef, int partitionIndex) {
+        if (boundingShape instanceof BoundingShape) {
+            Envelope envelope = ((BoundingShape) boundingShape).getEnvelope();
+            if (envelope == null) {
+                logger.warn("Envelope not found for top-level feature, ignoring");
+                return;
+            }
             double lowerX = envelope.getLowerCorner().getValue().get(0);
             double lowerY = envelope.getLowerCorner().getValue().get(1);
             double upperX = envelope.getUpperCorner().getValue().get(0);
@@ -174,12 +259,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 ));
                 // TODO Also use Geometries.rectangleGeographic(..) for lat and lon values
             }
-        } else if (connectToRoot && chunk instanceof CityModel) {
-            //  Connect MAPPER root node with this CityModel
-            connectCityModelToRoot(graphRef, Map.of(
-                    AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex,
-                    AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), CityModel.class.getName()
-            ));
         }
     }
 
@@ -244,28 +323,41 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 (r1, r2) -> r2.getValue().compareTo(r1.getValue()));
 
         Node leftTLNode = leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+        List<Label> leftLabels = StreamSupport.stream(leftTLNode.getLabels().spliterator(), false)
+                .filter(label -> !label.name().contains(AuxNodeLabels.__PARTITION_INDEX__.name()))
+                .toList();
+
         int rightPartitionIndex = Integer.parseInt(StreamSupport
                 .stream(rightNode.getLabels().spliterator(), false)
                 .filter(label -> label.name().startsWith(AuxNodeLabels.__PARTITION_INDEX__.name()))
                 .collect(Collectors.toSet())
                 .iterator().next().name().replace(AuxNodeLabels.__PARTITION_INDEX__.name(), ""));
-        double[] tmpBBox = GraphUtils.getBoundingBox(leftTLNode);
+        double[] leftBbox = GraphUtils.getBoundingBox(leftTLNode);
         Rectangle leftRectangle = Geometries.rectangle(
-                tmpBBox[0], tmpBBox[1],
-                tmpBBox[3], tmpBBox[4]
+                leftBbox[0], leftBbox[1],
+                leftBbox[3], leftBbox[4]
         );
         double leftArea = leftRectangle.area();
 
         // Preparations
-        List<Rectangle> rightRectangles = new ArrayList<>();
+        List<double[]> rightBboxes = new ArrayList<>();
         List<String> rightCOMIDs = new ArrayList<>();
         rtrees[rightPartitionIndex].search(leftRectangle).forEach(entry -> {
-            Rectangle rightRectangle = (Rectangle) entry.geometry();
-            rightRectangles.add(rightRectangle);
-            String rightCOMID = entry.value().getRepresentationNode(tx)
-                    .getSingleRelationship(EdgeTypes.object, Direction.INCOMING)
-                    .getStartNode().getElementId();
-            rightCOMIDs.add(rightCOMID);
+            // Consider only top-level features of the same type
+            Node rightTLNode = entry.value().getRepresentationNode(tx);
+            List<Label> rightLabels = StreamSupport.stream(rightTLNode.getLabels().spliterator(), false)
+                    .filter(label -> !label.name().contains(AuxNodeLabels.__PARTITION_INDEX__.name()))
+                    .toList();
+            int leftInRight = leftLabels.stream().filter(rightLabels::contains).toList().size();
+            int rightInLeft = rightLabels.stream().filter(leftLabels::contains).toList().size();
+            if (leftInRight == 0 || leftInRight != rightInLeft) {
+                return;
+            }
+
+            double[] rightBbox = GraphUtils.getBoundingBox(rightTLNode);
+            rightBboxes.add(rightBbox);
+            String rightCOMId = getCOMElementId(tx, entry.value());
+            rightCOMIDs.add(rightCOMId);
         });
 
         // First check for overlapping volume
@@ -281,16 +373,129 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             rightRatio = overlapVolume / rightVolume;
             if (leftRatio >= config.MATCHER_TOLERANCE_SOLIDS && rightRatio >= config.MATCHER_TOLERANCE_SOLIDS) {
                 // Overlap satisfies a minimum threshold
-                maxHeap.add(new AbstractMap.SimpleEntry<>(rightCOMID, leftOverlapRatio));
+                maxHeap.add(new AbstractMap.SimpleEntry<>(rightCOMID, leftRatio));
             }
+        }
+
+        // Trees often have similar bounding boxes -> Use additional features for matching
+        if (leftTLNode.hasLabel(Label.label(SolitaryVegetationObject.class.getName()))) {
+            // Class
+            String leftClazz;
+            if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.clazz)) {
+                leftClazz = leftTLNode.getSingleRelationship(EdgeTypes.clazz, Direction.OUTGOING).getEndNode()
+                        .getProperty(PropNames.value.toString()).toString();
+            } else {
+                leftClazz = null;
+            }
+
+            // Species
+            String leftSpecies;
+            if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.species)) {
+                leftSpecies = leftTLNode.getSingleRelationship(EdgeTypes.species, Direction.OUTGOING).getEndNode()
+                        .getProperty(PropNames.value.toString()).toString();
+            } else {
+                leftSpecies = null;
+            }
+
+            // Height
+            Length leftHeight;
+            if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.height)) {
+                leftHeight = (Length) toObject(leftTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode());
+            } else {
+                leftHeight = null;
+            }
+
+            // Names
+            String leftNameStrings;
+            if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.name)) {
+                ChildList<Code> ns = (ChildList<Code>) toObject(leftTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode());
+                List<String> leftNames = new ArrayList<>(ns.stream().map(Code::getValue).toList());
+                Collections.sort(leftNames);
+                leftNameStrings = String.join(",", leftNames);
+            } else {
+                leftNameStrings = null;
+            }
+
+            Map<Map.Entry<String, Double>, Double> toUpdate = new HashMap<>(); // cannot change priority queue while iterating -> change after
+            // TODO Adjust these values freely
+            double weightClazz = 0.1;
+            double weightSpecies = 0.1;
+            double weightHeight = 0.5;
+            double weightNames = 1;
+            maxHeap.forEach(entry -> {
+                Node rightTLNode = tx.getNodeByElementId(entry.getKey())
+                        .getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                double oldValue = entry.getValue();
+                double newValue = oldValue;
+
+                // Class
+                String rightClazz = null;
+                if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.clazz)) {
+                    rightClazz = rightTLNode.getSingleRelationship(EdgeTypes.clazz, Direction.OUTGOING).getEndNode()
+                            .getProperty(PropNames.value.toString()).toString();
+                }
+                if (leftClazz != null && leftClazz.equals(rightClazz)) {
+                    newValue += weightClazz;
+                }
+
+                // Species
+                String rightSpecies = null;
+                if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.species)) {
+                    rightSpecies = rightTLNode.getSingleRelationship(EdgeTypes.species, Direction.OUTGOING).getEndNode()
+                            .getProperty(PropNames.value.toString()).toString();
+                }
+                if (leftSpecies != null && leftSpecies.equals(rightSpecies)) {
+                    newValue += weightSpecies;
+                }
+
+                // Height
+                Length rightHeight = null;
+                if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.height)) {
+                    rightHeight = (Length) toObject(rightTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode());
+                }
+                if (leftHeight != null && rightHeight != null) {
+                    Double diff = compareMeasurements(leftHeight, rightHeight);
+                    if (diff == 0) {
+                        newValue += weightHeight;
+                    }
+                }
+
+                // Names
+                String rightNameStrings = null;
+                if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.name)) {
+                    ChildList<Code> ns = (ChildList<Code>) toObject(rightTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode());
+                    List<String> rightNames = new ArrayList<>(ns.stream().map(Code::getValue).toList());
+                    Collections.sort(rightNames);
+                    rightNameStrings = String.join(",", rightNames);
+                }
+                if (leftNameStrings != null && leftNameStrings.equals(rightNameStrings)) {
+                    newValue += weightNames;
+                }
+
+                // Save to add
+                if (newValue != oldValue) {
+                    toUpdate.put(entry, newValue);
+                }
+            });
+
+            // Update maxHeap
+            toUpdate.forEach((key, value) -> {
+                maxHeap.remove(key);
+                maxHeap.add(new AbstractMap.SimpleEntry<>(key.getKey(), value));
+            });
         }
 
         if (!maxHeap.isEmpty()) return maxHeap;
 
         // Too small overlapping, check for translations
-        for (int i = 0; i < rightRectangles.size(); i++) {
-            Rectangle rightRectangle = rightRectangles.get(i);
+        // TODO Also consider 3D bboxes instead of rectangles?
+        for (int i = 0; i < rightBboxes.size(); i++) {
             String rightCOMID = rightCOMIDs.get(i);
+            double[] rightBbox = rightBboxes.get(i);
+            Rectangle rightRectangle = Geometries.rectangle(
+                    rightBbox[0], rightBbox[1],
+                    rightBbox[3], rightBbox[4]
+            );
             double rightArea = rightRectangle.area();
 
             // Accept equal widths and heights

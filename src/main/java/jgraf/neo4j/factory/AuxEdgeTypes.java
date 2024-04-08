@@ -17,7 +17,9 @@ public enum AuxEdgeTypes implements RelationshipType {
     TANDEM, //LEFT_PARENT
     RIGHT_PARENT,
     LEFT_NODE,
-    RIGHT_NODE;
+    RIGHT_NODE,
+
+    boundedBy_old;
 
     public static boolean isIn(RelationshipType type) {
         return Arrays.stream(values()).anyMatch(t -> type.name().startsWith(t.name()) || type.name().endsWith(t.name()));

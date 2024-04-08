@@ -148,9 +148,6 @@ public abstract class Neo4jDB implements GraphDB {
         }
         // logger.debug("Mapping {}", clazz.getSimpleName());
 
-        // Calculate bounding box if available
-        setBoundingShape(source);
-
         // Check if this object has been mapped before, if yes return this mapped node instead of creating a new one
         // The scope of this cycle detection check is only within the source object TODO
         Node mappedNode = mapped.get(source);
@@ -462,8 +459,6 @@ public abstract class Neo4jDB implements GraphDB {
         // running application).
         Runtime.getRuntime().addShutdownHook(new Thread(managementService::shutdown));
     }
-
-    protected abstract void setBoundingShape(Object cityObject);
 
     public BaseDBConfig getConfig() {
         return config;

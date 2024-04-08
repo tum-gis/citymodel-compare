@@ -5,9 +5,10 @@ import com.github.davidmoten.rtree.geometry.Geometries;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.AuxPropNames;
+import jgraf.neo4j.factory.EdgeTypes;
+import jgraf.utils.BatchUtils;
 import jgraf.utils.MetricBoundarySurfaceProperty;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
-import org.apache.commons.geometry.euclidean.threed.Plane;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.numbers.core.Precision;
 import org.citygml4j.core.model.CityGMLVersion;
@@ -15,7 +16,6 @@ import org.citygml4j.core.model.core.AbstractCityObject;
 import org.citygml4j.core.model.core.AbstractFeature;
 import org.citygml4j.core.model.core.CityModel;
 import org.citygml4j.core.model.core.EngineeringCRSProperty;
-import org.citygml4j.core.util.reference.DefaultReferenceResolver;
 import org.citygml4j.xml.CityGMLContext;
 import org.citygml4j.xml.CityGMLContextException;
 import org.citygml4j.xml.reader.*;
@@ -66,6 +66,9 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             Path file = Path.of(filePath);
             logger.info("Reading CityGML v3.0 file {} chunk-wise into main memory", filePath);
 
+            // Ids of top-level features with no existing bounding shapes
+            List<Neo4jGraphRef> topLevelNoBbbox = Collections.synchronizedList(new ArrayList<>());
+
             // Multi-threading
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
             AtomicLong tlCount = new AtomicLong();
@@ -76,15 +79,23 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                     executorService.submit((Callable<Void>) () -> {
                         AbstractFeature feature = chunk.build();
                         tlCount.getAndIncrement();
+                        boolean toUpdateBboxTL = preProcessMapping(feature);
                         Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(feature,
                                 AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
-                        partitionMapPostProcessing(feature, graphRef, partitionIndex, connectToRoot);
+                        postProcessMapping(toUpdateBboxTL, feature, graphRef, partitionIndex, topLevelNoBbbox);
                         logger.info("Mapped {} top-level features", tlCount.get());
 
                         if (feature instanceof CityModel) {
                             if (cityModelRef[0] != null)
                                 throw new RuntimeException("Found multiple CityModel objects in one file");
                             cityModelRef[0] = graphRef;
+                            if (connectToRoot) {
+                                //  Connect MAPPER root node with this CityModel
+                                connectCityModelToRoot(graphRef, Map.of(
+                                        AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex,
+                                        AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), CityModel.class.getName()
+                                ));
+                            }
                         }
                         return null;
                     });
@@ -106,6 +117,11 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
             dbStats.stopTimer("Resolve links of input file [" + partitionIndex + "]");
 
+            dbStats.startTimer();
+            logger.info("Calculate and map bounding boxes of top-level features");
+            calcTLBbox(topLevelNoBbbox, partitionIndex);
+            dbStats.stopTimer("Calculate and map bounding boxes of top-level features");
+
             logger.info("Finished mapping file {}", filePath);
         } catch (CityGMLContextException | CityGMLReadException e) {
             throw new RuntimeException(e);
@@ -114,17 +130,83 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected boolean preProcessMapping(Object chunk) {
+        boolean toUpdateBboxTL = toUpdateBboxTL(chunk);
+        if (toUpdateBboxTL) ((AbstractCityObject) chunk).setBoundedBy(null);
+        return toUpdateBboxTL;
+    }
+
+    @Override
+    protected void postProcessMapping(boolean toUpdateBboxTL, Object chunk, Neo4jGraphRef graphRef, int partitionIndex, List<Neo4jGraphRef> topLevelNoBbox) {
+        if (!isTopLevel(chunk)) return;
+        if (toUpdateBboxTL) topLevelNoBbox.add(graphRef);
+        else {
+            BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
+            if (boundingShape == null) {
+                logger.debug("Bounding shape does not exist for top-level feature {}, will be calculated after XLink resolution", chunk.getClass().getName());
+                topLevelNoBbox.add(graphRef);
+                return;
+            }
+            addToRtree(boundingShape, graphRef, partitionIndex);
+        }
+    }
+
+    @Override
     protected Class<?> getCityModelClass() {
         return CityModel.class;
     }
 
     @Override
-    protected void partitionMapPostProcessing(Object chunk, Neo4jGraphRef graphRef, int partitionIndex, boolean connectToRoot) {
-        if (chunk instanceof AbstractCityObject && isTopLevel(chunk)) {
-            // Add top-level feature to RTree index
-            BoundingShape boundingShape = ((AbstractCityObject) chunk).getBoundedBy();
-            if (boundingShape == null) return;
-            Envelope envelope = boundingShape.getEnvelope();
+    protected boolean toUpdateBboxTL(Object chunk) {
+        if (!isTopLevel(chunk)) return false;
+        AbstractCityObject aco = (AbstractCityObject) chunk;
+        return aco.getBoundedBy() == null
+                || aco.getGeometryInfo(true).hasImplicitGeometries()
+                || aco.getGeometryInfo(true).hasLodImplicitGeometries();
+    }
+
+    @Override
+    protected void calcTLBbox(List<Neo4jGraphRef> topLevelNoBbox, int partitionIndex) {
+        if (topLevelNoBbox == null) return;
+        List<List<Neo4jGraphRef>> batches = BatchUtils.toBatches(topLevelNoBbox, 10 * config.MATCHER_TOPLEVEL_BATCH_SIZE);
+        batches.forEach(batch -> {
+            try (Transaction tx = graphDb.beginTx()) {
+                batch.forEach(graphRef -> {
+                    // Calculate bounding shape
+                    Node topLevelNode = graphRef.getRepresentationNode(tx);
+                    AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode);
+                    aco.computeEnvelope(EnvelopeOptions.defaults().setEnvelopeOnFeatures(true));
+                    BoundingShape boundingShape = aco.getBoundedBy();
+                    if (boundingShape == null) {
+                        logger.warn("Bounding shape not found for top-level feature {}, ignoring", aco.getClass().getName());
+                        return;
+                    }
+                    Node boundingShapeNode;
+                    try {
+                        boundingShapeNode = map(tx, boundingShape, new IdentityHashMap<>(), AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
+                    } catch (IllegalAccessException e) {
+                        logger.error("Error mapping bounding shape for top-level feature {}, {}",
+                                aco.getClass().getName(), e.getMessage());
+                        throw new RuntimeException(e);
+                    }
+                    topLevelNode.createRelationshipTo(boundingShapeNode, EdgeTypes.boundedBy);
+
+                    // Add top-level features to RTree index
+                    addToRtree(boundingShape, graphRef, partitionIndex);
+                });
+                tx.commit();
+            }
+        });
+    }
+
+    @Override
+    protected void addToRtree(Object boundingShape, Neo4jGraphRef graphRef, int partitionIndex) {
+        if (boundingShape instanceof BoundingShape) {
+            Envelope envelope = ((BoundingShape) boundingShape).getEnvelope();
+            if (envelope == null) {
+                logger.warn("Envelope not found for top-level feature, ignoring");
+                return;
+            }
             double lowerX = envelope.getLowerCorner().getValue().get(0);
             double lowerY = envelope.getLowerCorner().getValue().get(1);
             double upperX = envelope.getUpperCorner().getValue().get(0);
@@ -136,20 +218,6 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                 ));
                 // TODO Also use Geometries.rectangleGeographic(..) for lat and lon values
             }
-        } else if (connectToRoot && chunk instanceof CityModel) {
-            //  Connect MAPPER root node with this CityModel
-            connectCityModelToRoot(graphRef, Map.of(
-                    AuxPropNames.COLLECTION_INDEX.toString(), partitionIndex,
-                    AuxPropNames.COLLECTION_MEMBER_TYPE.toString(), CityModel.class.getName()
-            ));
-        }
-    }
-
-    @Override
-    protected void setBoundingShape(Object cityObject) {
-        if (cityObject instanceof org.xmlobjects.gml.model.feature.AbstractFeature c) {
-            c.setBoundedBy(new BoundingShape(
-                    c.computeEnvelope(EnvelopeOptions.defaults().reuseExistingEnvelopes(true))));
         }
     }
 

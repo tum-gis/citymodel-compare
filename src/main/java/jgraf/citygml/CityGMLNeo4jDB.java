@@ -74,7 +74,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract Class<?> getCityModelClass();
 
-    protected abstract void partitionMapPostProcessing(Object chunk, Neo4jGraphRef graphRef, int partitionIndex, boolean connectToRoot);
+    protected abstract boolean toUpdateBboxTL(Object chunk);
+
+    protected abstract void addToRtree(Object boundingShape, Neo4jGraphRef graphRef, int partitionIndex);
+
+    protected abstract void calcTLBbox(List<Neo4jGraphRef> topLevelNoBbox, int partitionIndex);
 
     protected void setIndexesIfNew() {
         logger.info("|--> Updating indexes");
@@ -149,6 +153,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
         // Set provides constant time for adds and removes of huge lists
         Set<Neo4jGraphRef> cityModelRefs = Collections.synchronizedSet(new HashSet<>());
+        // Ids of top-level features with no existing bounding shapes
+        List<Neo4jGraphRef> topLevelNoBbox = Collections.synchronizedList(new ArrayList<>());
         AtomicLong tlCountDir = new AtomicLong(0);
         try (Stream<Path> st = Files.walk(path)) {
             st.filter(Files::isRegularFile).forEach(file -> {
@@ -160,16 +166,15 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         CityGMLInputFactory in = builder.createCityGMLInputFactory();
                         in.setProperty(CityGMLInputFactory.FEATURE_READ_MODE, FeatureReadMode.SPLIT_PER_COLLECTION_MEMBER);
                         try (CityGMLReader reader = in.createCityGMLReader(file.toFile())) {
-                            logger.info("Reading file {}", file.toString());
+                            logger.info("Reading file {}", file);
                             long tlCountFile = 0;
                             while (reader.hasNext()) {
                                 CityGML chunk = reader.nextFeature();
                                 tlCountFile++;
-
+                                boolean toUpdateBboxTL = preProcessMapping(chunk);
                                 Neo4jGraphRef graphRef = (Neo4jGraphRef) this.map(chunk,
                                         AuxNodeLabels.__PARTITION_INDEX__.name() + partitionIndex);
-
-                                partitionMapPostProcessing(chunk, graphRef, partitionIndex, false);
+                                postProcessMapping(toUpdateBboxTL, chunk, graphRef, partitionIndex, topLevelNoBbox);
                                 logger.debug("Mapped {} top-level features", tlCountFile);
 
                                 if (chunk instanceof CityModel) {
@@ -198,6 +203,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         setIndexesIfNew();
         resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
         dbStats.stopTimer("Resolve links of tiled files in input directory " + path.toString());
+
+        dbStats.startTimer();
+        logger.info("Calculate and map bounding boxes of top-level features");
+        calcTLBbox(topLevelNoBbox, partitionIndex);
+        dbStats.stopTimer("Calculate and map bounding boxes of top-level features");
 
         // Merge all CityModel objects to one
         dbStats.startTimer();
@@ -896,6 +906,10 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
         }
         return anchorNodes.get(0);
     }
+
+    protected abstract boolean preProcessMapping(Object chunk);
+
+    protected abstract void postProcessMapping(boolean toUpdateBboxTL, Object chunk, Neo4jGraphRef graphRef, int partitionIndex, List<Neo4jGraphRef> topLevelNoBbox);
 
     protected abstract String getCOMElementId(Transaction tx, Neo4jGraphRef topLevelRef); // COM = CityObjectMember
 

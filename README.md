@@ -48,6 +48,12 @@ What is needed:
    ```shell
    docker pull sonnguyentum/citymodel-compare:1.0.0
    ```
+   
+   To use latest (experimental) functionalities, pull the following image instead:
+
+   ```shell
+    docker pull sonnguyentum/citymodel-compare:1.0.0-dev
+    ```
 
 3. Run the image:
 

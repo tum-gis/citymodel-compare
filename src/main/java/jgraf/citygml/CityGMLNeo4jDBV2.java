@@ -1179,9 +1179,30 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             }
         }
 
-        // Non-indexed nodes -> Find match having the most common kvps
+        // Match by common kvps with same values
+        if (!leftRelNode.getAllProperties().isEmpty()) {
+            Map<String, Object> leftProps = leftRelNode.getAllProperties();
+            AtomicReference<Integer> minCountDiffering = new AtomicReference<>(Integer.MIN_VALUE);
+            AtomicReference<Node> candidate = new AtomicReference<>(null);
+            rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).forEach(rightRel -> {
+                Node rightRelNode = rightRel.getEndNode();
+                Map<String, Object> rightProps = rightRelNode.getAllProperties();
+                int countDiffering = Maps.difference(leftProps, rightProps).entriesDiffering().size();
+                if (countDiffering < minCountDiffering.get()) {
+                    minCountDiffering.set(countDiffering);
+                    candidate.set(rightRelNode);
+                }
+            });
+
+            if (candidate.get() != null) {
+                return new AbstractMap.SimpleEntry<>(candidate.get(),
+                        new DiffResult(SimilarityLevel.SIMILAR_STRUCTURE, minCountDiffering.get()));
+            }
+        }
+
+        // Non-geometric non-generic nodes -> Find match having the most common kvps
         /*
-        if (leftRelNode.getAllProperties().size() > 0) {
+        if (!leftRelNode.getAllProperties().isEmpty()) {
             AtomicReference<Integer> countCommon = new AtomicReference<>();
             Optional<Relationship> optRightRel = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())
                     .stream()

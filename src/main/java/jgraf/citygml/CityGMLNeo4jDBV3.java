@@ -179,7 +179,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     @Override
     protected String getCOMElementId(Transaction tx, Neo4jGraphRef topLevelRef) {
         // TODO
-        return true;
+        return null;
     }
 
     /*

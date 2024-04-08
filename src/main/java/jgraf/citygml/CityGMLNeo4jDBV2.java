@@ -268,18 +268,18 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             rightCOMIDs.add(rightCOMID);
         });
 
-        // First check for overlapping
-        for (int i = 0; i < rightRectangles.size(); i++) {
-            Rectangle rightRectangle = rightRectangles.get(i);
+        // First check for overlapping volume
+        double leftRatio = 0;
+        double rightRatio = 0;
+        for (int i = 0; i < rightBboxes.size(); i++) {
             String rightCOMID = rightCOMIDs.get(i);
-
-            // Check for overlapping
-            double overlap = leftRectangle.intersectionArea(rightRectangle);
-            double rightArea = rightRectangle.area();
-            double leftOverlapRatio = overlap / leftArea;
-            double rightOverlapRatio = overlap / rightArea;
-            if (leftOverlapRatio > config.MATCHER_TOLERANCE_SURFACES
-                    && rightOverlapRatio > config.MATCHER_TOLERANCE_SURFACES) {
+            double[] rightBbox = rightBboxes.get(i);
+            double leftVolume = GeometryUtils.volume(leftBbox);
+            double rightVolume = GeometryUtils.volume(rightBbox);
+            double overlapVolume = GeometryUtils.overlapVolume(leftBbox, rightBbox);
+            leftRatio = overlapVolume / leftVolume;
+            rightRatio = overlapVolume / rightVolume;
+            if (leftRatio >= config.MATCHER_TOLERANCE_SOLIDS && rightRatio >= config.MATCHER_TOLERANCE_SOLIDS) {
                 // Overlap satisfies a minimum threshold
                 maxHeap.add(new AbstractMap.SimpleEntry<>(rightCOMID, leftOverlapRatio));
             }
@@ -1048,8 +1048,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected boolean compareMeasurements(Object leftMeasure, Object rightMeasure) {
-        if (!(leftMeasure instanceof Measure) || !(rightMeasure instanceof Measure)) return false;
+    protected Double compareMeasurements(Object leftMeasure, Object rightMeasure) {
+        if (!(leftMeasure instanceof Measure) || !(rightMeasure instanceof Measure)) return null;
         Measure left = (Measure) leftMeasure;
         Measure right = (Measure) rightMeasure;
         // Documentation on uom
@@ -1074,7 +1074,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         // TODO Compare m2, etc.
 
         if (left.getUom().matches("^urn:adv:uom:(m|mm|km)$")) {
-            if (!right.getUom().matches("^urn:adv:uom:(m|mm|km)$")) return false;
+            if (!right.getUom().matches("^urn:adv:uom:(m|mm|km)$")) return null;
             double leftMetre = switch (left.getUom()) {
                 case "urn:adv:uom:mm" -> left.getValue() / 1000;
                 case "urn:adv:uom:m" -> left.getValue();
@@ -1087,10 +1087,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 case "urn:adv:uom:km" -> right.getValue() * 1000;
                 default -> Double.NaN;
             };
-            return Math.abs(leftMetre - rightMetre) <= config.MATCHER_TOLERANCE_LENGTHS;
+            double diff = leftMetre - rightMetre;
+            if (Math.abs(diff) > config.MATCHER_TOLERANCE_LENGTHS) return diff;
+            return (double) 0;
         }
         if (left.getUom().matches("^urn:adv:uom:(grad|gon|rad)$")) {
-            if (!right.getUom().matches("^urn:adv:uom:(grad|gon|rad)$")) return false;
+            if (!right.getUom().matches("^urn:adv:uom:(grad|gon|rad)$")) return null;
             double leftRad = switch (left.getUom()) {
                 case "urn:adv:uom:grad" -> Math.toRadians(left.getValue());
                 case "urn:adv:uom:gon" -> Math.toRadians(left.getValue() * 90. / 100.);
@@ -1103,12 +1105,14 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 case "urn:adv:uom:rad" -> right.getValue();
                 default -> Double.NaN;
             };
-            return Math.abs(leftRad - rightRad) <= config.MATCHER_TOLERANCE_ANGLES;
+            double diff = leftRad - rightRad;
+            if (Math.abs(diff) > config.MATCHER_TOLERANCE_ANGLES) return diff;
+            return (double) 0;
         }
 
         // Same but without prefix
         if (left.getUom().matches("^(m|mm|km)$")) {
-            if (!right.getUom().matches("^(m|mm|km)$")) return false;
+            if (!right.getUom().matches("^(m|mm|km)$")) return null;
             double leftMetre = switch (left.getUom()) {
                 case "mm" -> left.getValue() / 1000;
                 case "m" -> left.getValue();
@@ -1121,10 +1125,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 case "km" -> right.getValue() * 1000;
                 default -> Double.NaN;
             };
-            return Math.abs(leftMetre - rightMetre) <= config.MATCHER_TOLERANCE_LENGTHS;
+            double diff = leftMetre - rightMetre;
+            if (Math.abs(diff) > config.MATCHER_TOLERANCE_LENGTHS) return diff;
+            return (double) 0;
         }
         if (left.getUom().matches("^(grad|gon|rad)$")) {
-            if (!right.getUom().matches("^(grad|gon|rad)$")) return false;
+            if (!right.getUom().matches("^(grad|gon|rad)$")) return null;
             double leftRad = switch (left.getUom()) {
                 case "grad" -> Math.toRadians(left.getValue());
                 case "gon" -> Math.toRadians(left.getValue() * 90. / 100.);
@@ -1137,11 +1143,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 case "rad" -> right.getValue();
                 default -> Double.NaN;
             };
-            return Math.abs(leftRad - rightRad) <= config.MATCHER_TOLERANCE_ANGLES;
+            double diff = leftRad - rightRad;
+            if (Math.abs(diff) > config.MATCHER_TOLERANCE_ANGLES) return diff;
+            return (double) 0;
         }
 
-        return left.getUom().equals(right.getUom())
-                && Math.abs(left.getValue() - right.getValue()) <= config.MATCHER_TOLERANCE_LENGTHS;
+        return null;
     }
 
     @Override

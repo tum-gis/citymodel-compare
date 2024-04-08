@@ -222,6 +222,12 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected Double compareMeasurements(Object leftMeasure, Object rightMeasure) {
+        // TODO
+        return null;
+    }
+
+    @Override
     protected ConvexPolygon3D toConvexPolygon3D(Object polygon, Precision.DoubleEquivalence precision) {
         // TODO
         return null;

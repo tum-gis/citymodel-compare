@@ -988,17 +988,34 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     ));
         }
 
-        // TODO Points
-        if (leftRelNode.hasLabel(Label.label(Point.class.getName()))) {
-            Point leftPoint = (Point) toObject(leftRelNode);
-            AtomicReference<Node> candidateRef = null;
+        // Points (all instances of CoordinateListProvider are treated the same, while PointProperty individually)
+        if (ClazzUtils.isInstanceOf(leftRelNode, CoordinateListProvider.class)
+                || leftRelNode.hasLabel(Label.label(PointProperty.class.getName()))) {
+            boolean leftIsPP;
+            List<Double> leftPos;
+            if (leftRelNode.hasLabel(Label.label(PointProperty.class.getName()))) {
+                leftIsPP = true;
+                leftPos = ((PointProperty) toObject(leftRelNode)).getPoint().toList3d();
+            } else {
+                leftIsPP = false;
+                leftPos = ((CoordinateListProvider) toObject(leftRelNode)).toList3d();
+            }
+
+            AtomicReference<Node> candidateRef = new AtomicReference<>();
             AtomicReference<Double> minDistance = new AtomicReference<>(Double.MAX_VALUE);
             rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
                     .forEach(rightRel -> {
                         Node rightRelNode = rightRel.getEndNode();
-                        Point rightPoint = (Point) toObject(rightRelNode);
-                        List<Double> leftPos = leftPoint.getPos().getValue();
-                        List<Double> rightPos = rightPoint.getPos().getValue();
+                        if (!ClazzUtils.isInstanceOf(rightRelNode, CoordinateListProvider.class)
+                                && !rightRelNode.hasLabel(Label.label(PointProperty.class.getName()))) return;
+                        List<Double> rightPos;
+                        if (rightRelNode.hasLabel(Label.label(PointProperty.class.getName()))) {
+                            if (!leftIsPP) return;
+                            rightPos = ((PointProperty) toObject(rightRelNode)).getPoint().toList3d();
+                        } else {
+                            if (leftIsPP) return;
+                            rightPos = ((CoordinateListProvider) toObject(rightRelNode)).toList3d();
+                        }
                         double distance = 0;
                         for (int i = 0; i < leftPos.size(); i++) {
                             distance += Math.pow(leftPos.get(i) - rightPos.get(i), 2);
@@ -1007,7 +1024,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         if (distance <= config.MATCHER_TOLERANCE_LENGTHS) {
                             if (minDistance.get() > distance) {
                                 minDistance.set(distance);
-                                candidateRef.set(rightNode);
+                                candidateRef.set(rightRelNode);
                             }
                         }
                     });
@@ -1015,7 +1032,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResult(SimilarityLevel.NONE, 0));
             return new AbstractMap.SimpleEntry<>(candidateRef.get(),
                     new DiffResultGeo(
-                            SimilarityLevel.SIMILAR_GEOMETRY,
+                            SimilarityLevel.EQUIVALENCE,
                             minDistance.get(),
                             null, // TODO Label list to skip for points
                             null

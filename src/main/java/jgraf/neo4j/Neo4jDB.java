@@ -11,6 +11,7 @@ import jgraf.neo4j.factory.AuxPropNames;
 import jgraf.neo4j.factory.NodeLabels;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
+import jgraf.utils.NumberUtils;
 import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.neo4j.dbms.api.DatabaseManagementService;
@@ -262,31 +263,32 @@ public abstract class Neo4jDB implements GraphDB {
 
                 if (componentType.equals(Object.class)) {
                     // Check whether this is an array of Double, String, or Object
-                    int keyCount = 0;
-                    boolean allDoubles = true;
-                    boolean allIntegers = true;
+                    boolean breakUsed = false;
                     for (Map.Entry<String, Object> entry : properties.entrySet()) {
-                        keyCount++;
-                        if (!entry.getValue().toString().matches("[0-9]+[.,][0-9]+")) {
-                            if (!entry.getValue().toString().matches("[0-9]+")) {
-                                allDoubles = false;
-                                allIntegers = false;
-                                break;
-                            }
-                            allDoubles = false;
-                        } else {
-                            allIntegers = false;
+                        if (!entry.getKey().matches(AuxPropNames.ARRAY_MEMBER + "\\[[0-9]+]")) continue;
+                        if (!NumberUtils.isDouble(entry.getValue().toString())) {
+                            breakUsed = true;
+                            break;
                         }
                     }
-                    if (allDoubles) {
+                    if (!breakUsed) {
                         componentType = Double.class;
-                    } else if (allIntegers) {
+                    }
+                    breakUsed = false;
+                    for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                        if (!entry.getKey().matches(AuxPropNames.ARRAY_MEMBER + "\\[[0-9]+]")) continue;
+                        if (!NumberUtils.isInteger(entry.getValue().toString())) {
+                            breakUsed = true;
+                            break;
+                        }
+                    }
+                    if (!breakUsed) {
                         componentType = Integer.class;
                     }
                 }
 
                 for (Map.Entry<String, Object> entry : properties.entrySet()) {
-                    if (entry.getKey().matches(AuxPropNames.ARRAY_MEMBER + "\\[[0-9]+\\]")) {
+                    if (entry.getKey().matches(AuxPropNames.ARRAY_MEMBER + "\\[[0-9]+]")) {
                         int index = Integer.parseInt(entry.getKey()
                                 .replace(AuxPropNames.ARRAY_MEMBER + "[", "")
                                 .replace("]", ""));

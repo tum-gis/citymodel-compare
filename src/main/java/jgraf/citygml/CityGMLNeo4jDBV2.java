@@ -2,13 +2,13 @@ package jgraf.citygml;
 
 import com.github.davidmoten.rtree.geometry.Geometries;
 import com.github.davidmoten.rtree.geometry.Rectangle;
+import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.AuxPropNames;
 import jgraf.neo4j.factory.EdgeTypes;
 import jgraf.neo4j.factory.PropNames;
-import jgraf.utils.ClazzUtils;
-import jgraf.utils.GraphUtils;
+import jgraf.utils.*;
 import org.apache.commons.geometry.euclidean.threed.*;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.geometry.euclidean.threed.line.Lines3D;
@@ -1157,7 +1157,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (!poly.isSetExterior()) return null;
 
         List<Vector3D> vectorList = new ArrayList<>(); // path must be closed (last = first)
-        List<Double> points = toDoubleList(poly.getExterior().getRing().toList3d());
+        List<Double> points = poly.getExterior().getRing().toList3d();
 
         for (int i = 0; i < points.size(); i += 3) {
             //double x = Double.parseDouble(String.valueOf(ps.get(i)));
@@ -1185,7 +1185,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         List<Double> points = new ArrayList<>();
         for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
             LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
-            List<Double> tmpPoints = toDoubleList(ls.toList3d());
+            List<Double> tmpPoints = ls.toList3d();
             points.addAll(tmpPoints);
         }
         double[] bbox = new double[6];
@@ -1231,7 +1231,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         List<Line3D> lines = new ArrayList<>();
         for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
             LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
-            List<Double> points = toDoubleList(ls.toList3d());
+            List<Double> points = ls.toList3d();
             if (points.size() < 6) {
                 logger.warn("LineString contains too few points");
                 continue;
@@ -1269,7 +1269,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (!(multiCurve instanceof MultiCurve mc)) return false;
         for (CurveProperty cp : mc.getCurveMember()) { // TODO getCurveMembers()?
             LineString ls = (LineString) cp.getCurve(); // TODO Other AbstractCurve types than LineString?
-            List<Double> points = toDoubleList(ls.toList3d());
+            List<Double> points = ls.toList3d();
             for (int i = 0; i < points.size(); i += 3) {
                 boolean contained = false;
                 for (Line3D line : lines) {
@@ -1442,15 +1442,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         } catch (CityGMLBuilderException | CityGMLWriteException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    // TODO This is used to convert list strings to list of doubles -> Check if this is still needed
-    private List<Double> toDoubleList(List<Double> list) {
-        List<Double> result = new ArrayList<>();
-        for (int i = 0; i < list.size(); i++) {
-            result.add(Double.parseDouble(list.get(i) + ""));
-        }
-        return result;
     }
 
     // Match two bounding boxes in 3D

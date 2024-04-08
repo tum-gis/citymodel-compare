@@ -34,10 +34,7 @@ import org.xmlobjects.gml.model.geometry.primitives.Solid;
 import org.xmlobjects.gml.util.EnvelopeOptions;
 
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 

@@ -49,4 +49,17 @@ public class GeometryUtils {
         List<ConvexPolygon3D> faces = Planes.indexedConvexPolygons(vertices, faceIndices, precision);
         return RegionBSPTree3D.from(faces);
     }
+
+    // bbox = {minX, minY, minZ, maxX, maxY, maxZ}
+    public static double overlapVolume(double[] bbox1, double[] bbox2) {
+        double xOverlap = Math.max(0, Math.min(bbox1[3], bbox2[3]) - Math.max(bbox1[0], bbox2[0]));
+        double yOverlap = Math.max(0, Math.min(bbox1[4], bbox2[4]) - Math.max(bbox1[1], bbox2[1]));
+        double zOverlap = Math.max(0, Math.min(bbox1[5], bbox2[5]) - Math.max(bbox1[2], bbox2[2]));
+        return xOverlap * yOverlap * zOverlap;
+    }
+
+    // bbox = {minX, minY, minZ, maxX, maxY, maxZ}
+    public static double volume(double[] bbox) {
+        return (bbox[3] - bbox[0]) * (bbox[4] - bbox[1]) * (bbox[5] - bbox[2]);
+    }
 }

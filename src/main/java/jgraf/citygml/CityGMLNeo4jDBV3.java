@@ -322,11 +322,6 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected double[] polygonBBox(Object polygon) {
-        return null;
-    }
-
-    @Override
     public void testImportAndExport(String importFilePath, String exportFilePath) {
         // TODO
     }

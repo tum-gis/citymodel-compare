@@ -3,6 +3,8 @@ package jgraf.utils;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import org.neo4j.graphdb.Node;
 
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.time.ZonedDateTime;
@@ -202,5 +204,27 @@ public class ClazzUtils {
                         return label.name();
                     }
                 }).collect(Collectors.joining(", "));
+    }
+
+    public static boolean isSubclass(Class<?> subclass, Class<?> superclass, Class<?> genericType) {
+        Type genericSuperclass = subclass.getGenericSuperclass();
+        if (genericSuperclass instanceof ParameterizedType parameterizedType) {
+            Type[] typeArguments = parameterizedType.getActualTypeArguments();
+            if (typeArguments.length == 1 && typeArguments[0] instanceof Class<?> typeArgument) {
+                return parameterizedType.getRawType().equals(superclass) && typeArgument.equals(genericType);
+            }
+        }
+        return false;
+    }
+
+    public static boolean isInstanceOf(Node node, Class<?> superclass) {
+        return StreamSupport.stream(node.getLabels().spliterator(), false)
+                .anyMatch(label -> {
+                    try {
+                        return superclass.isAssignableFrom(Class.forName(label.name()));
+                    } catch (ClassNotFoundException e) {
+                        return false;
+                    }
+                });
     }
 }

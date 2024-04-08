@@ -14,7 +14,12 @@ public enum EdgeTypes implements RelationshipType {
     envelope,
     lowerCorner,
     upperCorner,
-    value;
+    value,
+
+    clazz,
+    species,
+    height,
+    name;
 
     public static boolean isIn(RelationshipType type) {
         return Arrays.stream(values()).anyMatch(t -> type.name().startsWith(t.name()) || type.name().endsWith(t.name()));

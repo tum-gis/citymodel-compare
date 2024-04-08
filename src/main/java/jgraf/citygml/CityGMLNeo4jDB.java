@@ -13,8 +13,8 @@ import jgraf.neo4j.factory.*;
 import jgraf.utils.BatchUtils;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
+import jgraf.utils.MetricBoundarySurfaceProperty;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
-import org.apache.commons.geometry.euclidean.threed.Plane;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.lang3.function.TriConsumer;
 import org.apache.commons.numbers.core.Precision;
@@ -893,7 +893,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract Map.Entry<Node, DiffResult> findBest(Transaction tx, Relationship leftRel, Node rightNode);
 
-    protected abstract boolean compareMeasurements(Object leftMeasure, Object rightMeasure);
+    protected abstract boolean isPartProperty(Node node);
+
+    protected abstract boolean isBoundarySurfaceProperty(Node node);
+
+    protected abstract Double compareMeasurements(Object leftMeasure, Object rightMeasure);
 
     protected abstract ConvexPolygon3D toConvexPolygon3D(Object polygon, Precision.DoubleEquivalence precision);
 
@@ -903,9 +907,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract boolean isMultiCurveContainedInLines3D(Object multiCurve, List<Line3D> lines, Precision.DoubleEquivalence precision);
 
-    protected abstract Plane boundarySurfacePropertyToPlane(Object boundarySurfaceProperty, Precision.DoubleEquivalence precision);
-
-    protected abstract double[] polygonBBox(Object polygon);
+    protected abstract MetricBoundarySurfaceProperty metricFromBoundarySurfaceProperty(Node node, Precision.DoubleEquivalence lengthPrecision, Precision.DoubleEquivalence anglePrecision);
 
     public abstract void testImportAndExport(String importFilePath, String exportFilePath);
 

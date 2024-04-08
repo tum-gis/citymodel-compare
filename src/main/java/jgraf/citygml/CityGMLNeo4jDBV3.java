@@ -5,6 +5,7 @@ import com.github.davidmoten.rtree.geometry.Geometries;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.AuxPropNames;
+import jgraf.utils.MetricBoundarySurfaceProperty;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
 import org.apache.commons.geometry.euclidean.threed.Plane;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
@@ -198,7 +199,13 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected boolean compareMeasurements(Object leftMeasure, Object rightMeasure) {
+    protected boolean isPartProperty(Node node) {
+        // TODO
+        return false;
+    }
+
+    @Override
+    protected boolean isBoundarySurfaceProperty(Node node) {
         // TODO
         return false;
     }
@@ -227,7 +234,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected Plane boundarySurfacePropertyToPlane(Object boundarySurfaceProperty, Precision.DoubleEquivalence precision) {
+    protected MetricBoundarySurfaceProperty metricFromBoundarySurfaceProperty(Node node, Precision.DoubleEquivalence lengthPrecision, Precision.DoubleEquivalence anglePrecision) {
         // TODO
         return null;
     }

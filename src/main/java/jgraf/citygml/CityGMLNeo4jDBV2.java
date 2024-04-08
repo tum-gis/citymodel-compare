@@ -313,11 +313,11 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         Precision.DoubleEquivalence translationPrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TRANSLATION_DISTANCE);
         Precision.DoubleEquivalence anglePrecision = Precision.doubleEquivalenceOfEpsilon(config.MATCHER_TOLERANCE_ANGLES);
 
-        // BuildingPartProperties or Solid
-        if (leftRelNode.hasLabel(Label.label(BuildingPartProperty.class.getName()))
+        // PartProperties or Solid
+        if (isPartProperty(leftRelNode)
                 || leftRelNode.hasLabel(Label.label(Solid.class.getName()))) {
-            boolean isBuildingPartProperty = leftRelNode.hasLabel(Label.label(BuildingPartProperty.class.getName()));
-            double[] tmpLeftBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
+            boolean isPartProperty = isPartProperty(leftRelNode);
+            double[] tmpLeftBBox = GraphUtils.getBoundingBox(isPartProperty ?
                     leftRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
                     : leftRelNode);
             double leftVolume = (tmpLeftBBox[3] - tmpLeftBBox[0])
@@ -336,7 +336,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
                     .forEach(rightRel -> {
                         Node rightRelNode = rightRel.getEndNode();
-                        double[] tmpRightBBox = GraphUtils.getBoundingBox(isBuildingPartProperty ?
+                        double[] tmpRightBBox = GraphUtils.getBoundingBox(isPartProperty ?
                                 rightRelNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
                                 : rightRelNode);
                         double rightVolume = (tmpRightBBox[3] - tmpRightBBox[0])
@@ -416,37 +416,33 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
         // BoundarySurfaceProperties -> scout for type (roofs/walls/grounds) and centroid distance
         // -> best match with min distance -> however still have to match content, no skipping geometries
-        if (leftRelNode.hasLabel(Label.label(BoundarySurfaceProperty.class.getName()))) {
-            // TODO BoundarySurfaceProperty of Bridge and Tunnel
-            BoundarySurfaceProperty leftBSP = (BoundarySurfaceProperty) toObject(leftRelNode);
-            AbstractBoundarySurface leftBS = leftBSP.getBoundarySurface();
-            List<SurfaceProperty> leftSPs = leftBS.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
-            if (leftSPs.size() > 1) {
-                logger.warn("Found left BoundarySurfaceProperty, node id = {}, with multiple SurfaceProperties, using only the first",
-                        leftRelNode.getElementId());
-            }
-            SurfaceProperty leftSP = leftSPs.get(0);
-            Polygon leftPolygon = (Polygon) leftSP.getSurface();
-
-            // Using bbox for convex and non-convex polygons
-            double[] leftBBox = polygonBBox(leftPolygon);
-            Vector3D leftSizes = Vector3D.of(
-                    leftBBox[3] - leftBBox[0],
-                    leftBBox[4] - leftBBox[1],
-                    leftBBox[5] - leftBBox[2]
-            );
-
-            // Calculate normal vector
-            Plane leftPlane = boundarySurfacePropertyToPlane(leftBSP, precision);
-            if (leftPlane == null) {
-                logger.warn("Could not calculate plane for SurfaceProperty, node ID {}", leftRelNode.getElementId());
+        if (isBoundarySurfaceProperty(leftRelNode)) {
+            MetricBoundarySurfaceProperty leftMetricBSP = metricFromBoundarySurfaceProperty(leftRelNode, lengthPrecision, anglePrecision);
+            if (leftMetricBSP == null) {
                 return new AbstractMap.SimpleEntry<>(null,
                         new DiffResult(SimilarityLevel.NONE, 0));
             }
-            Vector3D.Unit leftNormal = leftPlane.getNormal();
-            Vector3D leftOrigin = leftPlane.getOrigin();
 
-            List<Double> leftPoints = toDoubleList(leftPolygon.getExterior().getRing().toList3d());
+            // Surface type
+            Class<?> leftBSType = leftMetricBSP.getSurfaceType();
+
+            // Using bbox for convex and non-convex polygons
+            Vector3D[] leftBBox = leftMetricBSP.getBbox();
+            Vector3D leftSizes = leftBBox[1].subtract(leftBBox[0]);
+
+            // Calculate normal vector
+            Vector3D leftNormal = leftMetricBSP.getNormalVector();
+            if (leftNormal == null) {
+                return new AbstractMap.SimpleEntry<>(null,
+                        new DiffResult(SimilarityLevel.NONE, 0));
+            }
+            Vector3D leftCentroid = Vector3D.centroid(leftMetricBSP.getExteriorPoints());
+
+            // Exterior points
+            List<Vector3D> leftPoints = leftMetricBSP.getExteriorPoints();
+
+            // LOD
+            int leftLOD = leftMetricBSP.getHighestLOD();
 
             Node candidateTranslationSameSize = null;
             Vector3D minTranslation = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
@@ -459,37 +455,37 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 if (!GraphUtils.isGeomValid(rightRelNode)) continue;
-                BoundarySurfaceProperty rightBSP = (BoundarySurfaceProperty) toObject(rightRelNode);
-                AbstractBoundarySurface rightBS = rightBSP.getBoundarySurface();
-                List<SurfaceProperty> rightSPs = rightBS.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
-                if (rightSPs.size() > 1) {
-                    logger.warn("Found right BoundarySurfaceProperty, node id = {}, with multiple SurfaceProperties, using only the first",
-                            rightRelNode.getElementId());
+                MetricBoundarySurfaceProperty rightMetricBSP = metricFromBoundarySurfaceProperty(rightRelNode, lengthPrecision, anglePrecision);
+                if (rightMetricBSP == null) {
+                    continue;
                 }
-                SurfaceProperty rightSP = rightSPs.get(0);
-                Polygon rightPolygon = (Polygon) rightSP.getSurface();
 
-                // Check label
-                if ((leftBS instanceof RoofSurface) && !(rightBS instanceof RoofSurface)) continue;
-                if ((leftBS instanceof WallSurface) && !(rightBS instanceof WallSurface)) continue;
-                if ((leftBS instanceof GroundSurface) && !(rightBS instanceof GroundSurface)) continue;
-                // TODO Support for roofs, walls, and grounds of bridges and tunnels, etc.
+                // Surface type
+                Class<?> rightBSType = rightMetricBSP.getSurfaceType();
 
-                double[] rightBBox = polygonBBox(rightPolygon);
-                Vector3D rightSizes = Vector3D.of(
-                        rightBBox[3] - rightBBox[0],
-                        rightBBox[4] - rightBBox[1],
-                        rightBBox[5] - rightBBox[2]
-                );
+                // Using bbox for convex and non-convex polygons
+                Vector3D[] rightBBox = rightMetricBSP.getBbox();
+                Vector3D rightSizes = rightBBox[1].subtract(rightBBox[0]);
 
                 // Calculate normal vector
-                Plane rightPlane = boundarySurfacePropertyToPlane(rightBSP, precision);
-                if (rightPlane == null) {
+                Vector3D rightNormal = rightMetricBSP.getNormalVector();
+                if (rightNormal == null) {
                     GraphUtils.markGeomInvalid(tx, rightRelNode);
                     continue;
                 }
-                Vector3D.Unit rightNormal = rightPlane.getNormal();
-                Vector3D rightOrigin = rightPlane.getOrigin();
+                Vector3D rightCentroid = Vector3D.centroid(rightMetricBSP.getExteriorPoints());
+
+                // Exterior points
+                List<Vector3D> rightPoints = rightMetricBSP.getExteriorPoints();
+
+                // LOD
+                int rightLOD = rightMetricBSP.getHighestLOD();
+
+                // Check label
+                if (!leftBSType.equals(rightBSType)) continue;
+
+                // Check LOD
+                if (leftLOD != rightLOD) continue;
 
                 // Compute diff in orientation
                 double angle = leftNormal.angle(rightNormal);
@@ -500,9 +496,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 Vector3D sizeChange = rightSizes.subtract(leftSizes);
 
                 // Compute translation
-                Vector3D translation = rightOrigin.subtract(leftOrigin);
-                if (translation.eq(Vector3D.ZERO, precision)) {
-                    if (sizeChange.eq(Vector3D.ZERO, precision)) {
+                Vector3D translation = rightCentroid.subtract(leftCentroid);
+                if (translation.eq(Vector3D.ZERO, lengthPrecision)) {
+                    if (sizeChange.eq(Vector3D.ZERO, lengthPrecision)) {
                         // Same orientation, same position, same size
                         logger.debug("Found the best matching candidate for {} with same orientation, same position, and same size",
                                 ClazzUtils.getSimpleClassName(leftRelNode));
@@ -534,17 +530,17 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             {0, 0, 0, 1}
                     });
                     int k = 0;
-                    for (; k < leftPoints.size(); k += 3) {
-                        org.citygml4j.geometry.Point p = new org.citygml4j.geometry.Point(
-                                leftPoints.get(k), leftPoints.get(k + 1), leftPoints.get(k + 2));
+                    for (; k < leftPoints.size(); k++) {
+                        Vector3D vp = leftPoints.get(k);
+                        org.citygml4j.geometry.Point p = new org.citygml4j.geometry.Point(vp.getX(), vp.getY(), vp.getZ());
                         p.transform3D(translationMatrix);
                         // TODO Check if this translation is along only one axis (side moving, vertical raise, etc.)
-                        if (!(precision.gte(p.getX(), rightBBox[0])
-                                && precision.gte(p.getY(), rightBBox[1])
-                                && precision.gte(p.getZ(), rightBBox[2])
-                                && precision.lte(p.getX(), rightBBox[3])
-                                && precision.lte(p.getY(), rightBBox[4])
-                                && precision.lte(p.getZ(), rightBBox[5]))
+                        if (!(lengthPrecision.gte(p.getX(), rightBBox[0].getX())
+                                && lengthPrecision.gte(p.getY(), rightBBox[0].getY())
+                                && lengthPrecision.gte(p.getZ(), rightBBox[0].getZ())
+                                && lengthPrecision.lte(p.getX(), rightBBox[1].getX())
+                                && lengthPrecision.lte(p.getY(), rightBBox[1].getY())
+                                && lengthPrecision.lte(p.getZ(), rightBBox[1].getZ()))
                         ) {
                             break;
                         }
@@ -1009,6 +1005,30 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
     */
 
+    protected boolean isPartProperty(Node node) {
+        return StreamSupport.stream(node.getLabels().spliterator(), false).anyMatch(l -> {
+            try {
+                return ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, BuildingPartProperty.class)
+                        || ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, BridgePartProperty.class)
+                        || ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, TunnelPartProperty.class);
+            } catch (ClassNotFoundException e) {
+                return false;
+            }
+        });
+    }
+
+    protected boolean isBoundarySurfaceProperty(Node node) {
+        return StreamSupport.stream(node.getLabels().spliterator(), false).anyMatch(l -> {
+            try {
+                return ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, AbstractBoundarySurface.class)
+                        || ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, org.citygml4j.model.citygml.bridge.AbstractBoundarySurface.class)
+                        || ClazzUtils.isSubclass(Class.forName(l.name()), FeatureProperty.class, org.citygml4j.model.citygml.tunnel.AbstractBoundarySurface.class);
+            } catch (ClassNotFoundException e) {
+                return false;
+            }
+        });
+    }
+
     @Override
     protected boolean compareMeasurements(Object leftMeasure, Object rightMeasure) {
         if (!(leftMeasure instanceof Measure) || !(rightMeasure instanceof Measure)) return false;
@@ -1241,69 +1261,114 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
-    protected Plane boundarySurfacePropertyToPlane(Object boundarySurfaceProperty, Precision.DoubleEquivalence precision) {
-        // TODO BoundarySurfaceProperty of Bridge and Tunnel
-        if (!(boundarySurfaceProperty instanceof BoundarySurfaceProperty bsp)) return null;
-        List<SurfaceProperty> sm = bsp.getBoundarySurface().getLod2MultiSurface() // TODO LOD3, LOD4
-                .getMultiSurface().getSurfaceMember();
-        List<Double> points = new ArrayList<>();
-        for (SurfaceProperty sp : sm) {
-            Polygon poly = (Polygon) sp.getSurface(); // TODO Other types than Polygon?
-            points.addAll(toDoubleList(poly.getExterior().getRing().toList3d()));
-        }
-        List<Vector3D> vectors = new ArrayList<>();
-        for (int i = 0; i < points.size(); i += 3) {
-            Vector3D v = Vector3D.of(points.get(i), points.get(i + 1), points.get(i + 2));
-            vectors.add(v);
-        }
-        try {
-            return Planes.fromPoints(vectors, precision);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Could not create plane from points: {} {}", Arrays.toString(vectors.toArray()), e.getMessage());
+    protected MetricBoundarySurfaceProperty metricFromBoundarySurfaceProperty(
+            Node node,
+            Precision.DoubleEquivalence lengthPrecision,
+            Precision.DoubleEquivalence anglePrecision
+    ) {
+        // Check types
+        List<SurfaceProperty> sps;
+        Class<?> surfaceType;
+        int highestLOD;
+        if (ClazzUtils.isInstanceOf(node, BoundarySurfaceProperty.class)) {
+            BoundarySurfaceProperty bsp = (BoundarySurfaceProperty) toObject(node);
+            AbstractBoundarySurface bs = bsp.getBoundarySurface();
+            surfaceType = bs.getClass();
+            if (bs.isSetLod4MultiSurface()) {
+                sps = bs.getLod4MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 4;
+            } else if (bs.isSetLod3MultiSurface()) {
+                sps = bs.getLod3MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 3;
+            } else if (bs.isSetLod2MultiSurface()) {
+                sps = bs.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 2;
+            } else {
+                logger.error("Building.BoundarySurfaceProperty, node id = {}, has no MultiSurface, ignoring", node.getElementId());
+                return null;
+            }
+        } else if (ClazzUtils.isInstanceOf(node, org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty.class)) {
+            org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty) toObject(node);
+            org.citygml4j.model.citygml.bridge.AbstractBoundarySurface bs = bsp.getBoundarySurface();
+            surfaceType = bs.getClass();
+            if (bs.isSetLod4MultiSurface()) {
+                sps = bs.getLod4MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 4;
+            } else if (bs.isSetLod3MultiSurface()) {
+                sps = bs.getLod3MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 3;
+            } else if (bs.isSetLod2MultiSurface()) {
+                sps = bs.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 2;
+            } else {
+                logger.error("Bridge.BoundarySurfaceProperty, node id = {}, has no MultiSurface, ignoring", node.getElementId());
+                return null;
+            }
+        } else if (ClazzUtils.isInstanceOf(node, org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty.class)) {
+            org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty) toObject(node);
+            org.citygml4j.model.citygml.tunnel.AbstractBoundarySurface bs = bsp.getBoundarySurface();
+            surfaceType = bs.getClass();
+            if (bs.isSetLod4MultiSurface()) {
+                sps = bs.getLod4MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 4;
+            } else if (bs.isSetLod3MultiSurface()) {
+                sps = bs.getLod3MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 3;
+            } else if (bs.isSetLod2MultiSurface()) {
+                sps = bs.getLod2MultiSurface().getMultiSurface().getSurfaceMember();
+                highestLOD = 2;
+            } else {
+                logger.error("Tunnel.BoundarySurfaceProperty, node id = {}, has no MultiSurface, ignoring", node.getElementId());
+                return null;
+            }
+        } else {
+            logger.error("Node id = {} is not a BoundarySurfaceProperty, ignoring", node.getElementId());
             return null;
         }
-    }
 
-    @Override
-    protected double[] polygonBBox(Object polygon) {
-        if (!(polygon instanceof Polygon poly)) return null;
-        if (!poly.isSetExterior()) return null;
-        List<Double> points = toDoubleList(poly.getExterior().getGeometry().toList3d());
+        // Calculate bbox and normal vector for each surface (using its exterior)
+        List<Vector3D> normals = new ArrayList<>();
+        List<Vector3D[]> bboxes = new ArrayList<>();
+        List<Vector3D> points = new ArrayList<>();
+        for (SurfaceProperty sp : sps) {
+            Polygon poly = (Polygon) sp.getSurface(); // TODO Other types than Polygon?
+            List<Double> surfacePoints = poly.getExterior().getRing().toList3d();
+            List<Vector3D> surfaceVectors = new ArrayList<>();
+            for (int i = 0; i < surfacePoints.size(); i += 3) {
+                Vector3D v = Vector3D.of(surfacePoints.get(i), surfacePoints.get(i + 1), surfacePoints.get(i + 2));
+                surfaceVectors.add(v);
+            }
+            points.addAll(surfaceVectors);
 
-        double[] bbox = new double[6];
-        double minX = Double.MAX_VALUE;
-        double minY = Double.MAX_VALUE;
-        double minZ = Double.MAX_VALUE;
-        double maxX = Double.MIN_VALUE;
-        double maxY = Double.MIN_VALUE;
-        double maxZ = Double.MIN_VALUE;
-        for (int i = 0; i < points.size(); i += 3) {
-            double vX = Double.parseDouble(points.get(i) + "");
-            double vY = Double.parseDouble(points.get(i + 1) + "");
-            double vZ = Double.parseDouble(points.get(i + 2) + "");
-            if (vX < minX) {
-                minX = vX;
-            } else if (vX > maxX) {
-                maxX = vX;
-            }
-            if (vY < minY) {
-                minY = vY;
-            } else if (vY > maxY) {
-                maxY = vY;
-            }
-            if (vZ < minZ) {
-                minZ = vZ;
-            } else if (vZ > maxZ) {
-                maxZ = vZ;
-            }
+            // Surface normal (normalized, with uniform direction -> independent of order of points)
+            Vector3D surfaceNormal = Planes.fromPoints(surfaceVectors, lengthPrecision).getNormal().normalize();
+            /*if (sps.size() > 1) {
+                // Only bring the normal vector to the same side of the plane in case of multiple surfaces
+                if (anglePrecision.lt(surfaceNormal.angle(Vector3D.of(1, 1, 1)), 0)) {
+                    surfaceNormal = surfaceNormal.negate();
+                }
+            }*/
+            normals.add(surfaceNormal);
+
+            // Bounding box
+            Vector3D[] bbox = {Vector3D.min(surfaceVectors), Vector3D.max(surfaceVectors)};
+            bboxes.add(bbox);
         }
-        bbox[0] = minX;
-        bbox[1] = minY;
-        bbox[2] = minZ;
-        bbox[3] = maxX;
-        bbox[4] = maxY;
-        bbox[5] = maxZ;
-        return bbox;
+
+        // Calculate the normal vector of all member surfaces
+        Vector3D normal = Vector3D.ZERO;
+        for (Vector3D n : normals) {
+            normal = normal.add(n);
+        }
+        normal = normal.normalize();
+
+        // Bounding box overall
+        Vector3D[] bbox = {
+                Vector3D.min(bboxes.stream().map(b -> b[0]).collect(Collectors.toList())),
+                Vector3D.max(bboxes.stream().map(b -> b[1]).collect(Collectors.toList()))
+        };
+
+        return new MetricBoundarySurfaceProperty(surfaceType, normal, bbox, points, highestLOD);
     }
 
     @Override

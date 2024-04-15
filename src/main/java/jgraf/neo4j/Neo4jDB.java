@@ -412,6 +412,7 @@ public abstract class Neo4jDB implements GraphDB {
                 DeleteNodeChange.class,
                 TranslationChange.class,
                 SizeChange.class,
+                LoDChange.class,
                 TopSplitChange.class
         ).forEach(clazz -> fillCount(Label.label(clazz.getName()), matchedNodeCount, matchedLabelCount));
         dbStats.setMatchedLabelCount(matchedLabelCount);

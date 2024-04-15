@@ -5,10 +5,7 @@ import com.github.davidmoten.rtree.geometry.Geometry;
 import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
-import jgraf.neo4j.diff.Change;
-import jgraf.neo4j.diff.DeleteNodeChange;
-import jgraf.neo4j.diff.SizeChange;
-import jgraf.neo4j.diff.TranslationChange;
+import jgraf.neo4j.diff.*;
 import jgraf.neo4j.factory.AuxEdgeTypes;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.EdgeTypes;
@@ -51,6 +48,8 @@ public class Patterns {
         x,
         y,
         z,
+        lod_left,
+        lod_right,
         tags
     }
 
@@ -1109,6 +1108,15 @@ public class Patterns {
             node.setProperty(_ChangePropNames.y.toString(), vector[1]);
             node.setProperty(_ChangePropNames.z.toString(), vector.length == 3 ? vector[2] : "");
         });
+    }
+
+    public static void markLodChange(Transaction tx, Node leftNode, Node rightNode, int leftLod, int rightLod) {
+        Node node = tx.createNode(Label.label(Change.class.getName()), Label.label(LoDChange.class.getName()));
+        node.createRelationshipTo(leftNode, AuxEdgeTypes.TANDEM);
+        node.createRelationshipTo(rightNode, AuxEdgeTypes.RIGHT_NODE);
+        node.setProperty(_ChangePropNames.change_type.toString(), LoDChange.class.getSimpleName());
+        node.setProperty(_ChangePropNames.lod_left.toString(), leftLod);
+        node.setProperty(_ChangePropNames.lod_right.toString(), rightLod);
     }
 
     private static boolean geoChangeExists(Node leftNode, Node rightNode, Class<?> changeClass) {

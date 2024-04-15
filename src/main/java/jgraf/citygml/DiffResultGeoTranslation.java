@@ -8,11 +8,11 @@ import java.util.List;
 public class DiffResultGeoTranslation extends DiffResultGeo {
     private double[] vector;
 
-    public DiffResultGeoTranslation(double[] vector, List<Label> skip, Label anchor) {
+    public DiffResultGeoTranslation(double[] vector, int[] lods, List<Label> skip, Label anchor) {
         // Switch sign of norm of vector so that higher value means higher confidence
         super(SimilarityLevel.SIMILAR_GEOMETRY_TRANSLATION,
                 -1 * Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]),
-                skip, anchor);
+                lods, skip, anchor);
         this.vector = vector;
     }
 

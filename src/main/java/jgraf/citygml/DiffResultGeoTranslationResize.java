@@ -8,13 +8,12 @@ public class DiffResultGeoTranslationResize extends DiffResultGeo {
     private double[] vector;
     private double[] delta;
 
-    public DiffResultGeoTranslationResize(double[] vector, double[] delta,
+    public DiffResultGeoTranslationResize(double[] vector, double[] delta, int[] lods,
                                           List<Label> skip, Label anchor) {
         super(SimilarityLevel.SIMILAR_GEOMETRY_TRANSLATION_SIZE_CHANGE,
                 -1 * Math.sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2])
                         - 1 * (delta[0] + delta[1] + delta[2]),
-                skip,
-                anchor);
+                lods, skip, anchor);
         this.vector = vector;
         this.delta = delta;
     }

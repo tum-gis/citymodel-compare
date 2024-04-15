@@ -712,6 +712,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                     case SIMILAR_GEOMETRY -> {
                         // Found geometric equivalence -> skip geometric and match non-geometric
                         rightMatchedNodes.add(rightRelNode.getElementId());
+                        attachLodChanges(tx, diffResult, leftRelNode, rightRelNode);
                         boolean tmpDiffFound = diff(
                                 tx, leftRelNode, rightRelNode, set,
                                 GraphUtils.listAll(skipProps, null),
@@ -723,6 +724,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         // Found a geometric match but translated by a vector != 0 and with a different size
                         // First create an interpretation node for later analyses
                         attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
+                        attachLodChanges(tx, diffResult, leftRelNode, rightRelNode);
                         // Then treat it as usual matched geometry
                         rightMatchedNodes.add(rightRelNode.getElementId());
                         boolean tmpDiffFound = diff(
@@ -736,6 +738,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         // Found a geometric match but translated by a vector != 0
                         // First create an interpretation node for later analyses
                         attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
+                        attachLodChanges(tx, diffResult, leftRelNode, rightRelNode);
                         // Then treat it as usual matched geometry
                         rightMatchedNodes.add(rightRelNode.getElementId());
                         boolean tmpDiffFound = diff(
@@ -749,6 +752,7 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                         // Found a geometric match with a different size
                         // First create an interpretation node for later analyses
                         attachGeomChanges(tx, diffResult, leftRelNode, rightRelNode);
+                        attachLodChanges(tx, diffResult, leftRelNode, rightRelNode);
                         // Then treat it as usual matched geometry
                         rightMatchedNodes.add(rightRelNode.getElementId());
                         boolean tmpDiffFound = diff(
@@ -880,6 +884,25 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
                 ));
             }
         }
+    }
+
+    private void attachLodChanges(Transaction tx, DiffResult diffResult, Node leftRelNode, Node rightRelNode) {
+        if (!(diffResult instanceof DiffResultGeo res)) return;
+        int[] lods = res.getLods();
+        if (lods == null || lods.length == 0 || lods.length > 2
+                || lods[0] == lods[1] || lods[0] < 0 || lods[1] < 0) return;
+        Label anchor = res.getAnchor();
+        Node leftTargetNode = null;
+        Node rightTargetNode = null;
+        if (anchor != null) {
+            leftTargetNode = getAnchorNode(tx, leftRelNode, anchor);
+            rightTargetNode = getAnchorNode(tx, rightRelNode, anchor);
+        } else {
+            leftTargetNode = leftRelNode;
+            rightTargetNode = rightRelNode;
+        }
+
+        Patterns.markLodChange(tx, leftTargetNode, rightTargetNode, lods[0], lods[1]);
     }
 
     // protected abstract Node getAnchorNode(Transaction tx, Node node, Label anchor);

@@ -607,6 +607,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             new DiffResultGeo(
                                     SimilarityLevel.SIMILAR_GEOMETRY,
                                     -minCentroidTranslation.get(),
+                                    null,
                                     null, // TODO Label list to skip for solids
                                     null
                             ));
@@ -620,6 +621,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         new DiffResultGeo(
                                 SimilarityLevel.SIMILAR_GEOMETRY,
                                 maxOverlapRatio.get(),
+                                null,
                                 null, // TODO Label list to skip for solids
                                 null
                         ));
@@ -672,6 +674,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             Node candidateTranslationResize = null;
             Vector3D minResize = Vector3D.of(maxAllowed, maxAllowed, maxAllowed);
             double minResizeNorm = config.MATCHER_TRANSLATION_DISTANCE;
+            int candidateLod = -1;
 
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
@@ -683,6 +686,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
                 // Surface type
                 Class<?> rightBSType = rightMetricBSP.getSurfaceType();
+                if (!leftBSType.equals(rightBSType)) continue;
 
                 // Using bbox for convex and non-convex polygons
                 Vector3D[] rightBBox = rightMetricBSP.getBbox();
@@ -701,12 +705,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
                 // LOD
                 int rightLOD = rightMetricBSP.getHighestLOD();
-
-                // Check label
-                if (!leftBSType.equals(rightBSType)) continue;
-
-                // Check LOD
-                if (leftLOD != rightLOD) continue;
 
                 // Compute diff in orientation
                 double angle = leftNormal.angle(rightNormal);
@@ -727,6 +725,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 new DiffResultGeo(
                                         SimilarityLevel.SIMILAR_GEOMETRY,
                                         1,
+                                        new int[]{leftLOD, rightLOD},
                                         List.of(Label.label(MultiSurface.class.getName())),
                                         null
                                 ));
@@ -737,6 +736,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         return new AbstractMap.SimpleEntry<>(rightRelNode,
                                 new DiffResultGeoSize(
                                         sizeChange.toArray(),
+                                        new int[]{leftLOD, rightLOD},
                                         List.of(Label.label(MultiSurface.class.getName())),
                                         Label.label(SurfaceProperty.class.getName())
                                 ));
@@ -776,7 +776,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     }
                     if (k == leftPoints.size()) {
                         // Same orientation, same size, but with translation -> Find min translation
-                        if (isSet) candidateTranslationSameSize = rightRelNode;
+                        if (isSet) {
+                            candidateTranslationSameSize = rightRelNode;
+                            candidateLod = rightLOD;
+                        }
                     } else {
                         if (isSet) {
                             double resizeNorm = sizeChange.norm();
@@ -784,6 +787,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                 minResizeNorm = resizeNorm;
                                 minResize = sizeChange;
                                 candidateTranslationResize = rightRelNode;
+                                candidateLod = rightLOD;
                             }
                         }
                     }
@@ -823,6 +827,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         new DiffResultGeoTranslationResize(
                                 minTranslation.toArray(),
                                 minResize.toArray(),
+                                new int[]{leftLOD, candidateLod},
                                 List.of(Label.label(MultiSurface.class.getName())),
                                 Label.label(SurfaceProperty.class.getName())
                         ));
@@ -835,6 +840,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 return new AbstractMap.SimpleEntry<>(candidateTranslationSameSize,
                         new DiffResultGeoTranslation(
                                 minTranslation.toArray(),
+                                new int[]{leftLOD, candidateLod},
                                 List.of(Label.label(MultiSurface.class.getName())),
                                 Label.label(SurfaceProperty.class.getName())
                         ));
@@ -847,6 +853,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResultGeoTranslationResize(
                             minTranslation.toArray(),
                             minResize.toArray(),
+                            new int[]{leftLOD, candidateLod},
                             List.of(Label.label(MultiSurface.class.getName())),
                             Label.label(SurfaceProperty.class.getName())
                     ));
@@ -872,6 +879,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                             new DiffResultGeo(
                                     SimilarityLevel.SIMILAR_GEOMETRY,
                                     1,
+                                    null, // TODO Diff LODs for implicit geometries?
                                     List.of(Label.label(GeometryProperty.class.getName())),
                                     null
                             ));
@@ -948,6 +956,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                                     new DiffResultGeo(
                                             SimilarityLevel.SIMILAR_GEOMETRY,
                                             1,
+                                            null, // TODO Diff LODs for curves?
                                             List.of(Label.label(LineString.class.getName())), // TODO Label list to skip for MultiCurves
                                             null
                                     ));
@@ -983,6 +992,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             return new AbstractMap.SimpleEntry<>(candidate,
                     new DiffResultGeoTranslation(
                             minTranslation.toArray(),
+                            null, // TODO Diff LODs for curves?
                             List.of(Label.label(LineString.class.getName())), // TODO Label list to skip for polygons
                             null
                     ));
@@ -1034,6 +1044,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     new DiffResultGeo(
                             SimilarityLevel.EQUIVALENCE,
                             minDistance.get(),
+                            null,
                             null, // TODO Label list to skip for points
                             null
                     ));
@@ -1081,8 +1092,9 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         }
                         if (leftObj instanceof MeasureAttribute leftGen) {
                             MeasureAttribute rightGen = (MeasureAttribute) rightObj;
+                            Double diff = compareMeasurements(leftGen, rightGen);
                             return leftGen.getName().equals(rightGen.getName())
-                                    && compareMeasurements(leftGen.getValue(), rightGen.getValue()) == 0;
+                                    && diff != null && diff == 0;
                         }
                         if (leftObj instanceof StringAttribute leftGen) {
                             StringAttribute rightGen = (StringAttribute) rightObj;
@@ -1135,7 +1147,8 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         if (!rightRelNode.hasLabel(Label.label(Measure.class.getName()))
                                 && !rightRelNode.hasLabel(Label.label(Length.class.getName()))) return false;
                         Measure rightMeasure = (Measure) toObject(rightRelNode);
-                        return compareMeasurements(leftMeasure, rightMeasure) == 0;
+                        Double diff = compareMeasurements(leftMeasure, rightMeasure);
+                        return diff != null && diff == 0;
                     })
                     .toList();
             if (candidates.isEmpty()) {

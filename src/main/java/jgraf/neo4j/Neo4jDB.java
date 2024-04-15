@@ -120,7 +120,7 @@ public abstract class Neo4jDB implements GraphDB {
     public void waitForIndexes() {
         try (Transaction tx = graphDb.beginTx()) {
             Schema schema = tx.schema();
-            schema.getIndexes().forEach(index -> schema.awaitIndexOnline(index, 600, TimeUnit.SECONDS));
+            schema.getIndexes().forEach(index -> schema.awaitIndexOnline(index, 3600, TimeUnit.SECONDS));
             tx.commit();
         } catch (Exception e) {
             logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));

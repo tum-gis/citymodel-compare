@@ -2,6 +2,7 @@ package jgraf.citygml;
 
 
 import com.github.davidmoten.rtree.geometry.Geometries;
+import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.factory.AuxNodeLabels;
 import jgraf.neo4j.factory.AuxPropNames;
@@ -102,14 +103,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                 }
             }
 
-            executorService.shutdown();
-            try {
-                if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                    executorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                executorService.shutdownNow();
-            }
+            Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
             dbStats.stopTimer("Map input file [" + partitionIndex + "]");
 
             dbStats.startTimer();
@@ -197,6 +191,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                 tx.commit();
             }
         });
+        Neo4jDB.finishThreads(executorService, config.MATCHER_CONCURRENT_TIMEOUT);
     }
 
     @Override

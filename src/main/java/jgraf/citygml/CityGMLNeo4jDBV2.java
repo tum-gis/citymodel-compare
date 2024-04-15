@@ -132,14 +132,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 });
             }
 
-            executorService.shutdown();
-            try {
-                if (!executorService.awaitTermination(config.MAPPER_CONCURRENT_TIMEOUT, TimeUnit.SECONDS)) {
-                    executorService.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                executorService.shutdownNow();
-            }
+            Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
             reader.close();
             logger.info("Mapped all {} top-level features", tlCount);
             logger.info("Finished mapping file {}", filePath);

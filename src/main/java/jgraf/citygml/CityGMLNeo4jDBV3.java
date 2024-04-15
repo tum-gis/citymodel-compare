@@ -162,8 +162,9 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     @Override
     protected void calcTLBbox(List<Neo4jGraphRef> topLevelNoBbox, int partitionIndex) {
         if (topLevelNoBbox == null) return;
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         List<List<Neo4jGraphRef>> batches = BatchUtils.toBatches(topLevelNoBbox, 10 * config.MATCHER_TOPLEVEL_BATCH_SIZE);
-        batches.forEach(batch -> {
+        batches.forEach(batch -> executorService.submit((Callable<Void>) () -> {
             try (Transaction tx = graphDb.beginTx()) {
                 batch.forEach(graphRef -> {
                     // Calculate bounding shape
@@ -190,7 +191,8 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                 });
                 tx.commit();
             }
-        });
+            return null;
+        }));
         Neo4jDB.finishThreads(executorService, config.MATCHER_CONCURRENT_TIMEOUT);
     }
 

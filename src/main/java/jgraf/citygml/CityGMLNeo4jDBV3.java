@@ -319,6 +319,11 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    protected void exportChangesCSV() {
+        // TODO
+    }
+
+    @Override
     public void testImportAndExport(String importFilePath, String exportFilePath) {
         // TODO
     }

@@ -10,10 +10,7 @@ import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
 import jgraf.neo4j.diff.*;
 import jgraf.neo4j.factory.*;
-import jgraf.utils.BatchUtils;
-import jgraf.utils.ClazzUtils;
-import jgraf.utils.GraphUtils;
-import jgraf.utils.MetricBoundarySurfaceProperty;
+import jgraf.utils.*;
 import org.apache.commons.geometry.euclidean.threed.ConvexPolygon3D;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
 import org.apache.commons.lang3.function.TriConsumer;
@@ -35,7 +32,9 @@ import org.neo4j.graphdb.traversal.Traverser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -958,6 +957,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract MetricBoundarySurfaceProperty metricFromBoundarySurfaceProperty(Node node, Precision.DoubleEquivalence lengthPrecision, Precision.DoubleEquivalence anglePrecision);
 
+    protected abstract void exportChangesCSV();
+
     public abstract void testImportAndExport(String importFilePath, String exportFilePath);
 
     public void exportRTreeFootprints(String folderPath) {
@@ -993,10 +994,56 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     @Override
     public void summarize() {
         super.summarize();
+
+        // exportChangesText();
+        exportChangesCSV();
+
         if (config.NEO4J_RTREE_STORE) {
             // Store all RTree layers in the database for later use/import
             storeRTrees();
         }
+    }
+
+    public void exportChangesText() {
+        // Check directory
+        File directory = new File(config.MATCHER_CHANGES_EXPORT_PATH);
+        if (!directory.exists()) {
+            directory.mkdirs();
+            logger.info("Directory for exporting logs of changes does not exist, created {}", directory.getPath());
+        }
+        if (!directory.isDirectory()) {
+            logger.error("Export path is not a directory: {}, nothing exported", directory.getPath());
+            return;
+        }
+        logger.info("Exporting logs of changes to in directory {}", directory.getPath());
+
+        File logs = new File(directory, "changes.log");
+        try (BufferedWriter bw = new BufferedWriter(new FileWriter(logs))) {
+            List<Class<?>> classes = List.of(
+                    InsertNodeChange.class,
+                    DeleteNodeChange.class,
+                    InsertPropChange.class,
+                    DeletePropChange.class,
+                    UpdatePropChange.class
+            );
+            classes.forEach(cl -> {
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(cl.getName())).forEachRemaining(node -> {
+                        try {
+                            bw.append(ChangeUtils.toString(node));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                } catch (Exception e) {
+                    logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                }
+            });
+            bw.flush();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        logger.info("Exported changes to {}", logs.getPath());
     }
 
     public RTree<Neo4jGraphRef, Geometry>[] getRtrees() {

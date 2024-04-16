@@ -421,9 +421,6 @@ public abstract class Neo4jDB implements GraphDB {
         logger.info("-->| Retrieved node and label stats");
         dbStats.stopTimer("Retrieve node and label stats");
         logger.info(dbStats.toString());
-
-        dbStats.exportChanges(graphDb, config.MATCHER_EXPORT_PATH);
-        logger.info("Exported changes to {}", config.MATCHER_EXPORT_PATH);
     }
 
     private void fillCount(Label label, AtomicLong nodeCount, Map<String, Long> labelCount) {

@@ -1,17 +1,9 @@
 package jgraf.core;
 
-import jgraf.neo4j.diff.*;
-import jgraf.utils.ChangeUtils;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -125,34 +117,6 @@ public class DBStats {
             result = className;
         }
         return result;
-    }
-
-    public void exportChanges(GraphDatabaseService graphDb, String path) {
-        try (BufferedWriter bw = new BufferedWriter(new FileWriter(path))) {
-            List<Class<?>> classes = List.of(
-                    InsertNodeChange.class,
-                    DeleteNodeChange.class,
-                    InsertPropChange.class,
-                    DeletePropChange.class,
-                    UpdatePropChange.class
-            );
-            classes.forEach(cl -> {
-                try (Transaction tx = graphDb.beginTx()) {
-                    tx.findNodes(Label.label(cl.getName())).forEachRemaining(node -> {
-                        try {
-                            bw.append(ChangeUtils.toString(node));
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                    });
-                } catch (Exception e) {
-                    logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
-                }
-            });
-            bw.flush();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public long getMappedNodeCount() {

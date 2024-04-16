@@ -5,10 +5,8 @@ import com.github.davidmoten.rtree.geometry.Rectangle;
 import com.google.common.collect.Maps;
 import jgraf.neo4j.Neo4jDB;
 import jgraf.neo4j.Neo4jGraphRef;
-import jgraf.neo4j.factory.AuxNodeLabels;
-import jgraf.neo4j.factory.AuxPropNames;
-import jgraf.neo4j.factory.EdgeTypes;
-import jgraf.neo4j.factory.PropNames;
+import jgraf.neo4j.diff.*;
+import jgraf.neo4j.factory.*;
 import jgraf.utils.*;
 import org.apache.commons.geometry.euclidean.threed.*;
 import org.apache.commons.geometry.euclidean.threed.line.Line3D;
@@ -55,7 +53,10 @@ import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -1665,6 +1666,392 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         };
 
         return new MetricBoundarySurfaceProperty(surfaceType, normal, bbox, points, highestLOD);
+    }
+
+    @Override
+    protected void exportChangesCSV() {
+        // Check directory
+        File directory = new File(config.MATCHER_CHANGES_EXPORT_PATH);
+        if (!directory.exists()) {
+            directory.mkdirs();
+            logger.info("Directory for exporting changes does not exist, created {}", directory.getPath());
+        }
+        if (!directory.isDirectory()) {
+            logger.error("Export path is not a directory: {}, nothing exported", directory.getPath());
+            return;
+        }
+        logger.info("Exporting changes to CSV files in directory {}", directory.getPath());
+        String delimiter = ";";
+
+        // Multi-threading
+        ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+
+        // Inserted nodes
+        executorService.submit((Callable<Void>) () -> {
+            File insertedNodes = new File(directory, "inserted_nodes.csv");
+            logger.info("> Exporting inserted nodes to {}", insertedNodes.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(insertedNodes))) {
+                writer.write("node_id;" +
+                        "inserted_node;" +
+                        "rel_type;" +
+                        "parent;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(InsertNodeChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftParentNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            String parentLabel = ClazzUtils.getSimpleClassName(leftParentNode);
+                            Node rightParentNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_PARENT, Direction.OUTGOING).getEndNode();
+                            Node insertedNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+                            String insertedLabel = ClazzUtils.getSimpleClassName(insertedNode);
+                            String relType = node.getProperty(AuxPropNames.RELATIONSHIP_NAME.toString()).toString();
+
+                            String topLevelLabel;
+                            Node leftTopLevelNode;
+                            String leftTopLevelId;
+                            Node rightTopLevelNode;
+                            String rightTopLevelId;
+                            if (insertedNode.hasLabel(Label.label(CityObjectMember.class.getName()))) {
+                                leftTopLevelId = "";
+                                rightTopLevelNode = insertedNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                                rightTopLevelId = rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                                topLevelLabel = ClazzUtils.getSimpleClassName(rightTopLevelNode);
+                            } else {
+                                leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftParentNode);
+                                topLevelLabel = leftTopLevelNode == null ? ""
+                                        : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                                leftTopLevelId = leftTopLevelNode == null ? ""
+                                        : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                                rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightParentNode);
+                                rightTopLevelId = rightTopLevelNode == null ? ""
+                                        : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            }
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        insertedLabel + delimiter +
+                                        relType + delimiter +
+                                        parentLabel + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        // Deleted nodes
+        executorService.submit((Callable<Void>) () -> {
+            File deletedNodes = new File(directory, "deleted_nodes.csv");
+            logger.info("> Exporting deleted nodes to {}", deletedNodes.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(deletedNodes))) {
+                writer.write("node_id;" +
+                        "deleted_node;" +
+                        "rel_type;" +
+                        "parent;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(DeleteNodeChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftParentNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            String parentLabel = ClazzUtils.getSimpleClassName(leftParentNode);
+                            Node rightParentNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_PARENT, Direction.OUTGOING).getEndNode();
+                            Node deletedNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.LEFT_NODE, Direction.OUTGOING).getEndNode();
+                            String deletedLabel = ClazzUtils.getSimpleClassName(deletedNode);
+                            String relType = node.getProperty(AuxPropNames.RELATIONSHIP_NAME.toString()).toString();
+
+                            String topLevelLabel;
+                            Node leftTopLevelNode;
+                            String leftTopLevelId;
+                            Node rightTopLevelNode;
+                            String rightTopLevelId;
+                            if (deletedNode.hasLabel(Label.label(CityObjectMember.class.getName()))) {
+                                rightTopLevelId = "";
+                                leftTopLevelNode = deletedNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                                leftTopLevelId = leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                                topLevelLabel = ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            } else {
+                                leftTopLevelNode = GraphUtils.getTopLevelNode(tx, deletedNode);
+                                topLevelLabel = leftTopLevelNode == null ? ""
+                                        : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                                leftTopLevelId = leftTopLevelNode == null ? ""
+                                        : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                                rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightParentNode);
+                                rightTopLevelId = rightTopLevelNode == null ? ""
+                                        : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            }
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        deletedLabel + delimiter +
+                                        relType + delimiter +
+                                        parentLabel + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        // Inserted properties
+        executorService.submit((Callable<Void>) () -> {
+            File insertedProps = new File(directory, "inserted_properties.csv");
+            logger.info("> Exporting inserted properties to {}", insertedProps.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(insertedProps))) {
+                writer.write("node_id;" +
+                        "inserted_property;" +
+                        "property_value;" +
+                        "of_node;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(InsertPropChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            String nodeLabel = ClazzUtils.getSimpleClassName(leftNode);
+                            Node rightNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+
+                            String insertedPropName = node.getProperty(AuxPropNames.PROPERTY_NAME.toString()).toString();
+                            String insertedPropValue = node.getProperty(AuxPropNames.PROPERTY_VALUE.toString()).toString();
+
+                            Node leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftNode);
+                            String topLevelLabel = leftTopLevelNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            String leftTopLevelId = leftTopLevelNode == null ? ""
+                                    : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            Node rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightNode);
+                            String rightTopLevelId = rightTopLevelNode == null ? ""
+                                    : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        insertedPropName + delimiter +
+                                        insertedPropValue + delimiter +
+                                        nodeLabel + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        // Deleted properties
+        executorService.submit((Callable<Void>) () -> {
+            File deletedProps = new File(directory, "deleted_properties.csv");
+            logger.info("> Exporting deleted properties to {}", deletedProps.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(deletedProps))) {
+                writer.write("node_id;" +
+                        "deleted_property;" +
+                        "property_value;" +
+                        "of_node;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(DeletePropChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            String nodeLabel = ClazzUtils.getSimpleClassName(leftNode);
+                            Node rightNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+
+                            String deletedPropName = node.getProperty(AuxPropNames.PROPERTY_NAME.toString()).toString();
+                            String deletedPropValue = node.getProperty(AuxPropNames.PROPERTY_VALUE.toString()).toString();
+
+                            Node leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftNode);
+                            String topLevelLabel = leftTopLevelNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            String leftTopLevelId = leftTopLevelNode == null ? ""
+                                    : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            Node rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightNode);
+                            String rightTopLevelId = rightTopLevelNode == null ? ""
+                                    : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        deletedPropName + delimiter +
+                                        deletedPropValue + delimiter +
+                                        nodeLabel + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        // Updated properties
+        executorService.submit((Callable<Void>) () -> {
+            File updatedProps = new File(directory, "updated_properties.csv");
+            logger.info("> Exporting updated properties to {}", updatedProps.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(updatedProps))) {
+                writer.write("node_id;" +
+                        "updated_property;" +
+                        "left_property_value;" +
+                        "right_property_value;" +
+                        "of_node;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(UpdatePropChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            String nodeLabel = ClazzUtils.getSimpleClassName(leftNode);
+                            Node rightNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+
+                            String updatedPropName = node.getProperty(AuxPropNames.PROPERTY_NAME.toString()).toString();
+                            String leftPropValue = node.getProperty(AuxPropNames.LEFT_PROPERTY_VALUE.toString()).toString();
+                            String rightPropValue = node.getProperty(AuxPropNames.RIGHT_PROPERTY_VALUE.toString()).toString();
+
+                            Node leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftNode);
+                            String topLevelLabel = leftTopLevelNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            String leftTopLevelId = leftTopLevelNode == null ? ""
+                                    : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            Node rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightNode);
+                            String rightTopLevelId = rightTopLevelNode == null ? ""
+                                    : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        updatedPropName + delimiter +
+                                        leftPropValue + delimiter +
+                                        rightPropValue + delimiter +
+                                        nodeLabel + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
     }
 
     @Override

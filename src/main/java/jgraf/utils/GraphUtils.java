@@ -1,10 +1,14 @@
 package jgraf.utils;
 
-import com.github.davidmoten.rtree.geometry.Geometries;
-import com.github.davidmoten.rtree.geometry.Rectangle;
 import jgraf.neo4j.factory.*;
+import org.citygml4j.model.citygml.core.CityObjectMember;
 import org.citygml4j.model.common.child.ChildList;
 import org.neo4j.graphdb.*;
+import org.neo4j.graphdb.traversal.Evaluation;
+import org.neo4j.graphdb.traversal.Evaluators;
+import org.neo4j.graphdb.traversal.Traverser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,6 +16,8 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 public class GraphUtils {
+    private final static Logger logger = LoggerFactory.getLogger(GraphUtils.class);
+
     public static void markGeomInvalid(Transaction tx, Node geomNode) {
         Lock lock = tx.acquireWriteLock(geomNode);
         geomNode.setProperty(AuxPropNames.GEOM_VALID.toString(), false);
@@ -63,6 +69,34 @@ public class GraphUtils {
                     return memberNode;
             }
         }
+        return null;
+    }
+
+    // Get top-level node that contains a given node
+    public static Node getTopLevelNode(Transaction tx, Node node) {
+        Traverser traverser = tx.traversalDescription()
+                .depthFirst()
+                .expand(PathExpanders.forDirection(Direction.INCOMING))
+                .evaluator(Evaluators.fromDepth(0))
+                .evaluator(path -> {
+                    if (path.endNode().getRelationships(Direction.INCOMING, EdgeTypes.object).stream()
+                            .anyMatch(r -> r.getStartNode().hasLabel(Label.label(CityObjectMember.class.getName())))) // TODO Currently CityGML 2.0
+                        return Evaluation.INCLUDE_AND_PRUNE;
+                    return Evaluation.EXCLUDE_AND_CONTINUE;
+                })
+                .traverse(node);
+        List<Node> topLevelNodes = StreamSupport.stream(traverser.spliterator(), false)
+                .map(Path::endNode)
+                .toList();
+
+        if (topLevelNodes.size() > 1) {
+            logger.warn("Found more than one top-level node for element node {}, retrieving the first", node.getElementId());
+            return topLevelNodes.get(0);
+        }
+
+        if (topLevelNodes.size() == 1) return topLevelNodes.get(0);
+
+        logger.error("No top-level node found for element node {}", node.getElementId());
         return null;
     }
 

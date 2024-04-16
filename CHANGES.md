@@ -12,6 +12,10 @@ Pending changes for the next dev release.
   If such a deviation is detected, a corresponding change node is created and attached to the source nodes in the graph
   database.
 
+* **CSV Export of Changes**: Detected changes are now exported to CSV files,
+  see [`190ca36`](https://github.com/tum-gis/citymodel-compare/commit/190ca366c9156d32953ef0b84e5e6e7d1671edee).
+  The location of the directory of these CSV files is specified in the config file in the directory `config`. 
+
 ### v1.0.0-dev - Released
 
 This is a development release containing additional features, which extend from the

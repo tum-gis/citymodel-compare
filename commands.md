@@ -196,7 +196,7 @@ sudo neo4j-admin set-initial-password <password>
 sudo systemctl enable neo4j
 
 # Restart
-sudo systemctl restart neo4j
+sudo neo4j restart
 
 # This webpage should now be available
 # https://<custom_domain>:7473

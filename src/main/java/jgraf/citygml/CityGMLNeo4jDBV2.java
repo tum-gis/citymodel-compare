@@ -2051,6 +2051,172 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             return null;
         });
 
+        // Translation change
+        executorService.submit((Callable<Void>) () -> {
+            File translatedSurfaces = new File(directory, "translated_surfaces.csv");
+            logger.info("> Exporting translated surfaces to {}", translatedSurfaces.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(translatedSurfaces))) {
+                writer.write("node_id;" +
+                        "of_boundary_surface;" +
+                        "left_surface_id;" +
+                        "right_surface_id;" +
+                        "delta_x;" +
+                        "delta_y;" +
+                        "delta_z;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(SizeChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            Node rightNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+
+                            Node boundarySurfaceNode = GraphUtils.getBoundarySurfaceNode(tx, leftNode);
+                            String boundarySurfaceNodeLabel = boundarySurfaceNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(boundarySurfaceNode);
+
+                            Node leftPolygon = leftNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                            String leftPolygonId = leftPolygon.getProperty(PropNames.id.toString()).toString();
+                            Node rightPolygon = rightNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                            String rightPolygonId = rightPolygon.getProperty(PropNames.id.toString()).toString();
+
+                            double deltaX = Double.parseDouble(node.getProperty(PropNames.x.toString()).toString());
+                            double deltaY = Double.parseDouble(node.getProperty(PropNames.y.toString()).toString());
+                            double deltaZ = Double.parseDouble(node.getProperty(PropNames.z.toString()).toString());
+
+                            Node leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftNode);
+                            String topLevelLabel = leftTopLevelNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            String leftTopLevelId = leftTopLevelNode == null ? ""
+                                    : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            Node rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightNode);
+                            String rightTopLevelId = rightTopLevelNode == null ? ""
+                                    : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        boundarySurfaceNodeLabel + delimiter +
+                                        leftPolygonId + delimiter +
+                                        rightPolygonId + delimiter +
+                                        deltaX + delimiter +
+                                        deltaY + delimiter +
+                                        deltaZ + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
+        // Size change
+        executorService.submit((Callable<Void>) () -> {
+            File resizedSurfaces = new File(directory, "resized_surfaces.csv");
+            logger.info("> Exporting translated surfaces to {}", resizedSurfaces.getPath());
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(resizedSurfaces))) {
+                writer.write("node_id;" +
+                        "of_boundary_surface;" +
+                        "left_surface_id;" +
+                        "right_surface_id;" +
+                        "delta_x;" +
+                        "delta_y;" +
+                        "delta_z;" +
+                        "of_top_level_type;" +
+                        "left_top_level_id;" +
+                        "right_top_level_id");
+                writer.newLine();
+
+                List<String> nodeIds = new ArrayList<>();
+                try (Transaction tx = graphDb.beginTx()) {
+                    tx.findNodes(Label.label(SizeChange.class.getName()))
+                            .forEachRemaining(node -> nodeIds.add(node.getElementId()));
+                    tx.commit();
+                }
+
+                BatchUtils.toBatches(nodeIds, config.DB_BATCH_SIZE).forEach(batch -> {
+                    try (Transaction tx = graphDb.beginTx()) {
+                        batch.forEach(nodeId -> {
+                            Node node = tx.getNodeByElementId(nodeId);
+                            Node leftNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.TANDEM, Direction.OUTGOING).getEndNode();
+                            Node rightNode = node.getSingleRelationship(
+                                    AuxEdgeTypes.RIGHT_NODE, Direction.OUTGOING).getEndNode();
+
+                            Node boundarySurfaceNode = GraphUtils.getBoundarySurfaceNode(tx, leftNode);
+                            String boundarySurfaceNodeLabel = boundarySurfaceNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(boundarySurfaceNode);
+
+                            Node leftPolygon = leftNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                            String leftPolygonId = leftPolygon.getProperty(PropNames.id.toString()).toString();
+                            Node rightPolygon = rightNode.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode();
+                            String rightPolygonId = rightPolygon.getProperty(PropNames.id.toString()).toString();
+
+                            double deltaX = Double.parseDouble(node.getProperty(PropNames.x.toString()).toString());
+                            double deltaY = Double.parseDouble(node.getProperty(PropNames.y.toString()).toString());
+                            double deltaZ = Double.parseDouble(node.getProperty(PropNames.z.toString()).toString());
+
+                            Node leftTopLevelNode = GraphUtils.getTopLevelNode(tx, leftNode);
+                            String topLevelLabel = leftTopLevelNode == null ? ""
+                                    : ClazzUtils.getSimpleClassName(leftTopLevelNode);
+                            String leftTopLevelId = leftTopLevelNode == null ? ""
+                                    : leftTopLevelNode.getProperty(PropNames.id.toString()).toString();
+                            Node rightTopLevelNode = GraphUtils.getTopLevelNode(tx, rightNode);
+                            String rightTopLevelId = rightTopLevelNode == null ? ""
+                                    : rightTopLevelNode.getProperty(PropNames.id.toString()).toString();
+
+                            try {
+                                writer.write(nodeId + delimiter +
+                                        boundarySurfaceNodeLabel + delimiter +
+                                        leftPolygonId + delimiter +
+                                        rightPolygonId + delimiter +
+                                        deltaX + delimiter +
+                                        deltaY + delimiter +
+                                        deltaZ + delimiter +
+                                        topLevelLabel + delimiter +
+                                        leftTopLevelId + delimiter +
+                                        rightTopLevelId);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                            }
+                        });
+                        tx.commit();
+                    } catch (Exception e) {
+                        logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+                    }
+                });
+
+            } catch (IOException e) {
+                logger.error(e.getMessage() + "\n" + Arrays.toString(e.getStackTrace()));
+            }
+            return null;
+        });
+
         Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
     }
 

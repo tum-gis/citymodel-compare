@@ -72,6 +72,33 @@ public class GraphUtils {
         return null;
     }
 
+    // Get boundary surface node that contains a given node
+    public static Node getBoundarySurfaceNode(Transaction tx, Node node) {
+        Traverser traverser = tx.traversalDescription()
+                .depthFirst()
+                .expand(PathExpanders.forDirection(Direction.INCOMING))
+                .evaluator(Evaluators.fromDepth(0))
+                .evaluator(path -> {
+                    if (path.endNode().hasRelationship(Direction.OUTGOING, EdgeTypes.lod2MultiSurface)) // TODO Currently CityGML 2.0
+                        return Evaluation.INCLUDE_AND_PRUNE;
+                    return Evaluation.EXCLUDE_AND_CONTINUE;
+                })
+                .traverse(node);
+        List<Node> boundarySurfaceNodes = StreamSupport.stream(traverser.spliterator(), false)
+                .map(Path::endNode)
+                .toList();
+
+        if (boundarySurfaceNodes.size() > 1) {
+            logger.warn("Found more than one boundary surface node for element node {}, retrieving the first", node.getElementId());
+            return boundarySurfaceNodes.get(0);
+        }
+
+        if (boundarySurfaceNodes.size() == 1) return boundarySurfaceNodes.get(0);
+
+        logger.error("No boundary surface node found for element node {}", node.getElementId());
+        return null;
+    }
+
     // Get top-level node that contains a given node
     public static Node getTopLevelNode(Transaction tx, Node node) {
         Traverser traverser = tx.traversalDescription()

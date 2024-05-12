@@ -370,11 +370,19 @@ browser.post_connect_cmd=play https://<server_name>:4443/tutorial
 ### Run Python Server
 
 ```bash
+# Change directory
+cd /home/user/neo4j-guides
+
 # Run the server in the background (HTTP)
 sudo nohup python3 ./http-server.py &
 
 # Run the server in the background (HTTPS)
 sudo nohup python3 ./https-server.py &
+
+# List all running servers
+ps -ef | grep http-server.py
+ps ax | grep http-server.py
+ps ax | grep https-server.py
 ```
 
 ### Restart Neo4j

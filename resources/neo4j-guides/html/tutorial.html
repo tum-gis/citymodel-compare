@@ -1,0 +1,682 @@
+<article class="guide">
+    <carousel class="deck container-fluid">
+        <!-- Title slide -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Greetings!</h3>
+                <p class="lead">Introduction to this tutorial</p>
+                <p class="lead"><i>Designed for use with my doctoral thesis</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Overview</b></h4>
+                <p>Hello and Welcome!
+                    In my doctoral thesis, I wrote about <i>Automatic Identification and Interpretation of Changes
+                        in Massive Semantic 3D City Models</i>.
+                    This tutorial was created to give
+                    a brief introduction to the tools used in the implementation
+                    as well as the graph database created for the thesis.
+                    The tutorial is structured as follows:</p>
+                <ol>
+                    <!--<li>Introduction to the <b>database</b></li>-->
+                    <!--<li>Manuals on how to use <b>Cypher</b> and <b>Neo4j Browser</b></li>-->
+                    <li>Basic queries to <b>count</b> nodes and city objects</li>
+                    <li>Inspecting the <b>graph content</b> of a city object</li>
+                    <li>Queries to retrieve and process <b>thematic attributes</b></li>
+                    <li>Queries to retrieve and process <b>geometric objects</b></li>
+                    <li>Example queries used to <b>analyse detected changes</b></li>
+                    <li>Example queries used to <b>analyse interpreted changes</b></li>
+                    <li>Further resources on the <b>implementation</b></li>
+                </ol>
+                <br>
+
+                <h4><b>Contact</b></h4>
+                <p>For further questions, comments or suggestions, please contact me at:
+                    <b>Son H. Nguyen</b>
+                    | <a href="mailto:son.nguyen@tum.de" target="_blank">Email</a>
+                    | <a href="https://www.asg.ed.tum.de/en/gis/our-team/staff/son-h-nguyen/"
+                         target="_blank">Website</a>
+                    | <a href="https://www.linkedin.com/in/son-h-nguyen/" target="_blank">LinkedIn</a>.
+                </p>
+
+                <h4><b>How to Navigate this Tutorial</b></h4>
+                <p>This tutorial consists of several slides.
+                    To browse through these slides, please use the arrow keys
+                    <b><code>&larr;</code></b> <b><code>&rarr;</code></b> on your keyboard
+                    or click on the navigation buttons below.
+                    To jump to a specific slide, click on the corresponding bullet icon of that slide.</p>
+            </div>
+        </slide>
+
+        <!-- Technologies -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Neo4j Technologies</h3>
+                <p class="lead">Neo4j, Cypher, Neo4j Browser</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Neo4j</b></h4>
+                <p>Neo4j is one of the most popular graph databases worldwide.
+                    In this tutorial, we will explore the graph representations of CityGML datasets
+                    stored in such a Neo4j instance.</p>
+                <h4><b>Cypher</b></h4>
+                <p>Similar to SQL in relational databases, Cypher is a declarative query language
+                    specifically designed to work with graphs in Neo4j.</p>
+                <h4><b>Neo4j Browser</b></h4>
+                <p>Neo4j Browser is a web application that allows for
+                    writing and sending Cypher queries to a Neo4j database
+                    as well as visualizing their results interactively.
+                    If you can read this text, you are already using Neo4j Browser.
+                    Therefore, you do not need to install anything (except a browser of your choice).</p>
+            </div>
+        </slide>
+
+        <!-- Manuals -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Manuals</h3>
+                <p class="lead">While using Neo4j Browser</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>How to use Neo4j Browser</b></h4>
+                <p>The Neo4j Browser consists of two main areas:</p>
+                <ul>
+                    <li style="list-style-type: disc;"><b><code>neo4j$_</code> Query Area (top)</b>:
+                        Cypher queries can be formulated and executed here.
+                    </li>
+                    <li style="list-style-type: disc;"><code>$_</code> <b>Result Area (below)</b>:
+                        Each query and its results are displayed in a section here.
+                    </li>
+                </ul>
+                <br>
+
+                <h4><b>Tips</b></h4>
+                <p>Please note the buttons in the top right corner of each query section and their functions:</p>
+                <ul>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/pin.png" style="display: inline;">
+                        Pin the current query and its results to the top.
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/hut.png" style="display: inline;">
+                        Collapse the current query and its results.
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/fullscreen.png"
+                             style="display: inline;">
+                        Expand the current query and its results to fill the screen.
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/close.png" style="display: inline;">
+                        Remove the current query and its results.
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/run.png" style="display: inline;">
+                        Execute the current query.
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/star.png" style="display: inline;">
+                        Bookmark the current query, which can be found again using the taskbar on the left side.
+                    </li>
+                </ul>
+                <p>We recommend <b>pinning this tutorial</b>
+                    using <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/pin.png" style="display: inline;">
+                    so that it stays at the top whenever a new query has been executed.</p>
+            </div>
+        </slide>
+
+        <!-- Database contents -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Database Contents</h3>
+                <p class="lead">Metadata about the stored information</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Contents of this Database</b></h4>
+                <p>This database includes the following:</p>
+                <ul>
+                    <li style="list-style-type: disc;">
+                        The graph representations of the entire
+                        <a target="_blank"
+                           href="https://metaver.de/trefferanzeige?docuuid=2C1F2EEC-CF9F-4D8B-ACAC-79D8C1334D5E">
+                            <b>Hamburg datasets</b></a>
+                        in CityGML 2.0 (LOD2) from 2016 and 2022
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <b>Changes</b> (also stored as graphs) detected between these graph representations
+                    </li>
+                    <li style="list-style-type: disc;">
+                        <b>Interpretations</b> (also stored as graphs) of these identified changes
+                    </li>
+                </ul>
+                <br>
+                <p>The database is approximately <b>100 GB</b> in size and stores over <b>half a billion nodes</b>
+                    (excluding auxiliary nodes used for spatial indexing, etc.).</p>
+                <p>The following figure visualizes the spatial extent of the employed Hamburg datasets:</p>
+                <figure>
+                    <img src="http://localhost:8001/html/img/hamburg_bbox_bordered.png" alt="Hamburg bounding box"
+                         width="700">
+                    <figcaption>Source: German Federal Agency for Cartography and Geodesy</figcaption>
+                </figure>
+            </div>
+        </slide>
+
+        <!-- Count Nodes -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Count Nodes (1)</h3>
+                <p class="lead">Per partition/dataset</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Total Number of Nodes in the Database</b></h4>
+                <p>In the graph representations of CityGML datasets,
+                    nodes represent city objects (such as buildings, surfaces, doors, windows)
+                    and edges represent their relationships (such as "boundedBy").</p>
+                <p>The total number of nodes stored in the database can be queried using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n) RETURN count(n)</pre>
+                </figure>
+                <p>In addition to content nodes (those that contain information from the input CityGML datasets),
+                    this number also <b>includes change nodes</b>, <b>interpretation nodes</b>,
+                    as well as <b>auxiliary nodes</b> needed for constructing the R-tree used in spatial indexing, etc.
+                    To consider only content nodes, please use the queries below.</p>
+                <h4><b>Count Content Nodes Per Dataset</b></h4>
+                <p>The <b>old</b> and <b>new</b> city model are stored in two separate graph partitions.
+                    The content nodes from the old and new CityGML dataset are assigned with
+                    either the label <code>__PARTITION__0</code> or <code>__PARTITION__1</code>, respectively.</p>
+                <p>To count the number of content nodes in each partition:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n:`__PARTITION_INDEX__0`) RETURN count(n)</pre>
+                    <figcaption>Old dataset (2016)</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n:`__PARTITION_INDEX__1`) RETURN count(n)</pre>
+                    <figcaption>New dataset (2022)</figcaption>
+                </figure>
+            </div>
+        </slide>
+
+        <!-- Count Buildings -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Count Nodes (2)</h3>
+                <p class="lead">Buildings and BuildingParts</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Count Buildings per Dataset</b></h4>
+                <p>The total number of buildings per dataset can be queried using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
+RETURN count(b)</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__1`)
+RETURN count(b)</pre>
+                </figure>
+                <!--<p>The label values are the <b>unique class names</b> of CityGML objects in Java using citygml4j.
+                    These values must be unique and identifiable not only for semantic indexing in the database,
+                    but also for the reconstruction process that
+                    converts graphs back to their original CityGML objects.</p>-->
+                <p>In this database, city objects are often assigned with <b>two labels</b>: one storing their type,
+                    the other their original dataset.</p>
+                <p>In Neo4j Browser, after typing <code>MATCH (n:</code>,
+                    a list of available labels will be suggested and updated
+                    as the user enters the labels for <code>n</code>.
+                    To display the autosuggestion list again, press <code>Ctrl + Space</code>.</p>
+                <h4><b>Count Building Parts per Dataset</b></h4>
+                <p>Similarly, the total number of building parts per dataset can be queried using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (p:BuildingPart:`__PARTITION_INDEX__0`)
+RETURN count(p)</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (p:BuildingPart:`__PARTITION_INDEX__1`)
+RETURN count(p)</pre>
+                </figure>
+            </div>
+        </slide>
+
+        <!-- Count Subelements -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Count Nodes (3)</h3>
+                <p class="lead">Boundary surfaces and label overview</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Count Boundary Surfaces per Dataset</b></h4>
+                <p>Boundary surfaces are 2D surfaces of a 3D city object that enclose its volume.
+                    There are three types of boundary surfaces: roof, wall, and ground surfaces.</p>
+                The total number of boundary surfaces per dataset per surface type can be queried using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (s:RoofSurface) RETURN count(s)</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (s:WallSurface) RETURN count(s)</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (s:GroundSurface) RETURN count(s)</pre>
+                </figure>
+                <h4><b>Get Overview of all Nodes per Label</b></h4>
+                <p>An overview of all relevant labels and their assigned nodes in the database for the old CityGML
+                    dataset
+                    can be achieved using the following query:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n:`__PARTITION_INDEX__0`)
+WHERE NOT n:`__ARRAY__` AND NOT n:`org.xmlobjects.model.ChildList`
+WITH reduce(str = "", l IN labels(n) | str + " " + replace(l, "__PARTITION_INDEX__0", "")) AS label
+WITH ltrim(last(split(label, "."))) AS label, count(label) AS count
+RETURN label, count
+ORDER BY count DESC</pre>
+                </figure>
+                <p>The same can be applied for the new dataset by replacing the label value
+                    <code>__PARTITION_INDEX__0</code> with <code>__PARTITION_INDEX__1</code> in the query.</p>
+                <p>Due to the high number of nodes available in the database,
+                    this may take several minutes to complete.</p>
+                <p>The query itself is syntactically complex so that the results are easier to read, such as:</p>
+                <pre>
+                    ╒═════════════════════════════════════╤════════╕
+                    │label                                │count   │
+                    ╞═════════════════════════════════════╪════════╡
+                    │"DirectPosition"                     │56665310│
+                    ├─────────────────────────────────────┼────────┤
+                    │"ArrayList"                          │56665310│
+                    ├─────────────────────────────────────┼────────┤
+                    │"PosOrPointPropertyOrPointRep"       │27418988│
+                    ├─────────────────────────────────────┼────────┤
+                    │"ChildList"                          │19608138│
+                    ├─────────────────────────────────────┼────────┤
+                    │"PosOrPointPropertyOrPointRepOrCoord"│16648074│
+                    ├─────────────────────────────────────┼────────┤
+                    │"SurfaceProperty"                    │11567484│
+                    ├─────────────────────────────────────┼────────┤
+                    │"BoundingShape"                      │6299124 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Envelope"                           │6299124 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"StringAttribute"                    │5611472 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Polygon"                            │5425504 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Exterior"                           │5425504 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"LinearRing"                         │5425504 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"BoundarySurfaceProperty"            │5422806 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"MultiSurfaceProperty"               │5422806 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"MultiSurface"                       │5422806 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"WallSurface"                        │3677737 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"CurveProperty"                      │3264339 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"LineString"                         │3264339 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Code"                               │1094531 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"RoofSurface"                        │1026320 │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Length"                             │719174  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"SolidProperty"                      │719174  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Solid"                              │719174  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"CompositeSurface"                   │719174  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"MultiCurveProperty"                 │719115  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"MultiCurve"                         │719115  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"GroundSurface"                      │718749  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"BuildingPartProperty"               │500540  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"BuildingPart"                       │500540  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Building"                           │374990  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ExternalReference"                  │374990  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ExternalObject"                     │374990  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"CityObjectMember"                   │374990  │
+                    ├─────────────────────────────────────┼────────┤
+                    │"AddressProperty"                    │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Address"                            │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"XalAddressProperty"                 │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"AddressDetails"                     │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Country"                            │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"CountryName"                        │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Locality"                           │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"LocalityName"                       │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"Thoroughfare"                       │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ThoroughfareNumberOrRange"          │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ThoroughfareNumber"                 │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ThoroughfareName"                   │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"PostalCode"                         │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"PostalCodeNumber"                   │83981   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"ThoroughfareNumberSuffix"           │26373   │
+                    ├─────────────────────────────────────┼────────┤
+                    │"StringOrRef"                        │788     │
+                    ├─────────────────────────────────────┼────────┤
+                    │"CityModel"                          │1       │
+                    └─────────────────────────────────────┴────────┘
+                </pre>
+            </div>
+        </slide>
+
+        <!-- Inspect Graphs -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Inspect Graphs (1)</h3>
+                <p class="lead">Show a single building node</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Return a Single Building Node</b></h4>
+                <p>The following query returns a single building node from the first dataset:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
+RETURN b LIMIT 1</pre>
+                </figure>
+                <p>By using <code>LIMIT 1</code>, a random building node is selected and returned
+                    (in case when multiple buildings exist).
+                    This <code>LIMIT n</code> is generally useful when the result of a query may become very large.</p>
+                <p>If the GMLID of the building is known,
+                    the following query can be applied (with an example GMLID):</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"}) RETURN b</pre>
+                </figure>
+                <p><b>Clicking</b> on the returned node will display the building's attributes on the right.</p>
+                <p><b>Double-clicking</b> the node extends the graph with the node's directly connected nodes.</p>
+            </div>
+        </slide>
+
+        <!-- Inspect Graphs -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Inspect Graphs (2)</h3>
+                <p class="lead">Show entire building subgraph</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Visualize a Building and its Children</b></h4>
+                <p>A building node and its child nodes can be visualized using the following
+                    (using an example GMLID):</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[]->() RETURN graph</pre>
+                </figure>
+                <p>By using <code>(n)-[r]->(m)</code>, all relationships in the direction from the building node
+                    to all its direct children are considered.</p>
+                <h4><b>Visualize a Subgraph of a Building with specified Depth</b></h4>
+                <p>The graph shown above has depth <code>1</code>.
+                    To extend this graph to depth <code>h</code>, use the following query:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[*h]->() RETURN graph</pre>
+                </figure>
+                <p>Replace the value of <code>h</code> to any positive number.</p>
+                <h4><b>Visualize entire Building Subgraph</b></h4>
+                <p>The following query visualizes the entire subgraph content of a single building:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[*]->(:`__PARTITION_INDEX__0`)
+RETURN graph</pre>
+                </figure>
+                <p>By using <code>(n)-[*]->(m)</code>, all relationships in the directions outgoing
+                    from the building node to all its descendants are considered.
+                    This is particularly useful
+                    when only the type of the start and end node are known while traversing. </p>
+                <p><b>Please note</b>: <code>*</code> should only be used for a small subgraph
+                    or in conjunction with a specified depth <code>*h</code> to avoid performance issues.</p>
+            </div>
+        </slide>
+
+        <!-- Thematic Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thematic Queries (2)</h3>
+                <p class="lead">Retrieval of thematic attributes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Get simple Attributes</b></h4>
+                <p>In this implementation, an attribute is considered simple
+                    if it can be represented by a single plain text and can be easily compared with others.
+                    Examples of such simple attributes of a building include
+                    <code>creationDate</code> and <code>storeysAboveGround</code>,
+                    which can be retrieved using the following:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})
+RETURN b.creationDate, toInteger(b.storeysAboveGround)</pre>
+                </figure>
+                <p>The function <code>toInteger(s)</code> converts a string <code>s</code> to a natural number.
+                    This is generally useful when the type of the attribute is unknown.</p>
+                <h4><b>Get List of Generic Attributes of a Building</b></h4>
+                <p>In CityGML, a building may have multiple generic attributes,
+                    which are not simple attributes and thus represented as child nodes to the building.
+                    These generic attributes (names and values) can be retrieved using the following:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[:genericAttribute]->()-[*2]->(g)
+RETURN g.name AS name, g.value AS value
+ORDER BY name ASC</pre>
+                </figure>
+                <!--<p>The depth <code>*2</code> is used to consider all possible paths from
+                    the building node to the generic attribute nodes.</p>-->
+                <p>The query above renames the names and values of found generic attributes
+                    to <code>name</code> and <code>value</code>, respectively.
+                    This is required to refer to the field later, such as in <code>ORDER BY</code>.
+                    Here, the results are sorted by <code>name</code> in ascending order.</p>
+            </div>
+        </slide>
+
+        <!-- Thematic Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thematic Queries (3)</h3>
+                <p class="lead">Existence of thematic attributes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Return Buildings with Existing Thematic Attributes</b></h4>
+                <p>To investigate whether all buildings given in the old dataset are provided with the attribute
+                    <code>storeysAboveGround</code>, the following query can be used:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
+WHERE b.storeysAboveGround IS NOT NULL
+WITH count(b) AS with_storeys
+MATCH (b:Building:`__PARTITION_INDEX__0`)
+WITH with_storeys, count(b) AS total
+RETURN with_storeys, total, round(with_storeys*100.0/total) AS percent</pre>
+                </figure>
+                <p>This query first counts the number of buildings with existing floor information
+                    using <code>IS NOT NULL</code>, then divides it by the total number of all buildings
+                    from the old dataset to calculate the percentage.</p>
+                <p>The function <code>round(r)</code> rounds the number <code>r</code> to the closest real number.</p>
+                <p><b>Please note:</b> For a division <code>p/q</code>,
+                    like Java, Cypher will return an integer if both <code>p</code> and <code>q</code> are integers.
+                    For instance <code>1/2</code> will return <code>0</code> instead of <code>0.5</code>.</p>
+            </div>
+        </slide>
+
+        <!-- Thematic Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thematic Queries (4)</h3>
+                <p class="lead">Comparison of thematic attributes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Return Buildings with more than One Floor</b></h4>
+                <p>The number of buildings higher than one storey can be retrieved as follows:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
+WHERE toInteger(b.storeysAboveGround) > 1
+RETURN count(b)</pre>
+                </figure>
+                <p>This query automatically exludes buildings
+                    that do not have the attribute <code>storeysAboveGround</code></p>
+                <h4><b>Get Overview of all Available Floors and Count Buildings</b></h4>
+                <p>The following query returns the number of buildings with respect to their number of storeys:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
+WITH DISTINCT toInteger(b.storeysAboveGround) AS all_nr_storeys
+UNWIND all_nr_storeys AS nr_storey
+MATCH (b:Building:`__PARTITION_INDEX__0`)
+WHERE toInteger(b.storeysAboveGround) = nr_storey
+WITH nr_storey, count(b) AS count
+RETURN nr_storey, count</pre>
+                </figure>
+                <p>With <code>DISTINCT</code>, duplicate values can be excluded.
+                    This is used in this case to group buildings based on their common number of storeys.</p>
+                <p>The variable <code>all_nr_storeys</code> is a list of all distinct numbers of storeys found.
+                    This list can be iterated over using <code>UNWIND</code>.</p>
+            </div>
+        </slide>
+
+        <!-- Geometric Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Geometric Queries (1)</h3>
+                <p class="lead">Retrieval of Bounding Boxes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Query Bounding Box of a Building</b></h4>
+                <p>During mapping, the implementation actively checks whether a bounding shape (envelop) exists
+                    for a CityGML feature. If it is not the case, a bounding shape shall be computed.
+                    In both cases, the bounding shape or bounding box is always stored in the graphs.</p>
+                <p>To inspect how such a bounding box is stored in the graph relative to the building:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[:boundedBy]->()-[*]->()
+RETURN graph</pre>
+                </figure>
+                <h4><b>Show Bounding Box Values</b></h4>
+                <p>The coordinate values of the lower and upper corner of the bounding box returned above
+                    can be further retrieved as follows:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[:boundedBy]->()-[:envelope]->(e),
+(e)-[:lowerCorner]->()-[*]->(l:`__ARRAY__`),
+(e)-[:upperCorner]->()-[*]->(u:`__ARRAY__`)
+WITH toFloat(l.`ARRAY_MEMBER[0]`) AS lx,
+    toFloat(l.`ARRAY_MEMBER[1]`) AS ly,
+    toFloat(l.`ARRAY_MEMBER[2]`) as lz,
+    toFloat(u.`ARRAY_MEMBER[0]`) AS ux,
+    toFloat(u.`ARRAY_MEMBER[1]`) AS uy,
+    toFloat(u.`ARRAY_MEMBER[2]`) AS uz
+RETURN lx, ly, lz, ux, uy, uz</pre>
+                </figure>
+                <p>The query returns six real numbers.
+                    The first three are <code>x</code>, <code>y</code>, and <code>z</code> coordinate
+                    of the lower corner point, while the last three are of the upper corner point.</p>
+            </div>
+        </slide>
+
+        <!-- Geometric Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Geometric Queries (2)</h3>
+                <p class="lead">Calculation of Bounding Boxes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Compute Footprint and Volume of a Building's Bounding Box</b></h4>
+                <p>Using the information about the lower and upper corner previously retrieved
+                    for a building's bounding box, its footprint and volume can be calculated as follows:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[:boundedBy]->()-[:envelope]->(e),
+(e)-[:lowerCorner]->()-[*]->(l:`__ARRAY__`),
+(e)-[:upperCorner]->()-[*]->(u:`__ARRAY__`)
+WITH toFloat(l.`ARRAY_MEMBER[0]`) AS lx,
+    toFloat(l.`ARRAY_MEMBER[1]`) AS ly,
+    toFloat(l.`ARRAY_MEMBER[2]`) as lz,
+    toFloat(u.`ARRAY_MEMBER[0]`) AS ux,
+    toFloat(u.`ARRAY_MEMBER[1]`) AS uy,
+    toFloat(u.`ARRAY_MEMBER[2]`) AS uz
+WITH round((ux - lx) * (uy - ly), 3) AS footprint, uz, lz
+RETURN footprint, round(footprint * (uz - lz), 3) AS volume</pre>
+                </figure>
+                <p>The function <code>round(r, i)</code> rounds a given real number <code>r</code>
+                    to <code>i</code> fractional digits (also known as precision).</p>
+                <p>The query computes the footprint as the product of
+                    the differences in <code>x</code> and <code>y</code> coordinates of the lower and upper corner,
+                    while it computes the volume as the product of the footprint and difference in <code>z</code>.
+                    This is due to the fact that bounding boxes in CityGML are axis-aligned.</p>
+                <p><b>Please note</b>: The computation of footprint and volume based on bounding boxes
+                    may not accurately represent the actual values, only an estimation or their upper bounds.</p>
+            </div>
+        </slide>
+
+        <!-- Geometric Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Geometric Queries (3)</h3>
+                <p class="lead">Query Buildings based on Bounding Boxes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Find Buildings with Footprint and Volume Criteria</b></h4>
+                <p>The following query searches for all buildings in the old dataset
+                    that have a footprint greater than <code>100 m<sup>2</sup></code>
+                    and volume greater than <code>500 m<sup>3</sup></code>.</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)-[:boundedBy]->()-[:envelope]->(e),
+(e)-[:lowerCorner]->()-[*]->(l:`__ARRAY__`),
+(e)-[:upperCorner]->()-[*]->(u:`__ARRAY__`)
+WITH toFloat(l.`ARRAY_MEMBER[0]`) AS lx,
+    toFloat(l.`ARRAY_MEMBER[1]`) AS ly,
+    toFloat(l.`ARRAY_MEMBER[2]`) as lz,
+    toFloat(u.`ARRAY_MEMBER[0]`) AS ux,
+    toFloat(u.`ARRAY_MEMBER[1]`) AS uy,
+    toFloat(u.`ARRAY_MEMBER[2]`) AS uz
+WITH round((ux - lx) * (uy - ly), 3) AS footprint, uz, lz
+WITH footprint, round(footprint * (uz - lz), 3) AS volume
+WHERE footprint > 100 AND volume > 500
+RETURN count(footprint)</pre>
+                </figure>
+                <p>The query first computes the footprint and volume of each building based on its bounding box
+                    (as explained previously), then filters these buildings based on the given criteria.</p>
+                <p><b>Please note</b>: Neo4j only supports
+                    <a href="https://neo4j.com/docs/cypher-manual/current/functions/spatial/">
+                        spatial queries for points</a>.
+                    Complex spatial queries that involve 2D and 3D geometries are currently not supported.
+                    There exists a spatial extension called
+                    <a href="https://github.com/neo4j-contrib/spatial">Neo4j Spatial</a>.
+                    However, as the project is community-driven and not officially supported by Neo4j,
+                    it often becomes outdated and may not be compatible with newer Neo4j versions.
+                    A workaround is to store spatial information explicitly in the graphs,
+                    then retrieve and process them using third-party spatial libraries, as implemented here.
+                    However, even this approach cannot replace a native spatial index.</p>
+                </p>
+                </p>
+            </div>
+        </slide>
+
+        <!-- Other learning materials -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Other Resources</h3>
+                <p class="lead">Further guides from the web</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Stay Tuned</b></h4>
+                <p>This is a work in progress. More tutorials and guides will be added soon.</p>
+                <h4><b>Other Guides from Neo4j</b></h4>
+                <ul class="undecorated">
+                    <li style="list-style-type: disc;"><a play-topic="movie-graph">Movie Graph</a> - actors &amp; movies
+                    </li>
+                    <li style="list-style-type: disc;"><a play-topic="query-template">Query Templates</a> - common
+                        ad-hoc queries
+                    </li>
+                    <li style="list-style-type: disc;"><a play-topic="cypher">Cypher</a> - query language fundamentals
+                    </li>
+                </ul>
+            </div>
+        </slide>
+    </carousel>
+</article>

@@ -1,0 +1,413 @@
+<article class="guide">
+    <carousel class="deck container-fluid">
+        <!-- Hallo Lindau -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Hallo Lindau!</h3>
+                <p class="lead">Vorstellung des Tutorials</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Hallo! Worum geht's?</b></h4>
+                <p>Herzlich willkommen in unserem CityGML 3.0 Workshop im 3D-Forum Lindau!
+                    In diesem Tutorial werden wir uns die Graph-Repräsentationen
+                    eines CityGML3-Datensatzes näher anschauen.</p>
+                <h4><b>Wer bin ich?</b></h4>
+                <p>Ich bin Doktorand und wissenschaftlicher Mitarbeiter
+                    des Lehrstuhls für Geoinformatik an der Technischen Universität München:</p>
+                <ul>
+                    <li style="list-style-type: circle;"><b>Son H. Nguyen, M.Sc.</b>
+                        | <a href="mailto:son.nguyen@tum.de" target="_blank">E-Mail</a>
+                        | <a href="https://www.asg.ed.tum.de/en/gis/our-team/staff/son-h-nguyen/" target="_blank">Webseite</a>
+                        | <a href="https://www.linkedin.com/in/son-h-nguyen/" target="_blank">LinkedIn</a>
+                    </li>
+                </ul>
+                <br>
+                <p>Ich freue mich auf Ihre Fragen und Feedbacks während des Tutorials!</p>
+                <h4><b>Wie navigiere ich dieses Tutorial?</b></h4>
+                <p>Verwenden Sie die Pfeiltasten <b><code>&larr;</code></b> <b><code>&rarr;</code></b>
+                    auf Ihrer Tastatur, oder klicken Sie auf die Navigationsschaltflächen unten,
+                    um durch die Folien zu blättern bzw. eine bestimme Folie zu selektieren.</p>
+            </div>
+        </slide>
+
+        <!-- Erste Schritte -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Erste Schritte</h3>
+                <p class="lead">Neo4j, Cypher, Neo4j Browser</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Was ist Neo4j?</b></h4>
+                <p>Neo4j ist eine der beliebtesten Graph-Datenbanken weltweit.
+                    In unserem Tutorial werden wir eine Graphrepräsentation eines CityGML3-Datensatzes
+                    in einer solchen Neo4j-Instanz betrachten.</p>
+                <h4><b>Was ist Cypher?</b></h4>
+                <p>Ähnlich wie SQL in relationalen Datenbanken, ist Cypher eine deklarative Abfragesprache,
+                    die speziell für die Arbeit mit Graphen in Neo4j entwickelt wurde.</p>
+                <h4><b>Was ist Neo4j Browser?</b></h4>
+                <p>Neo4j Browser ist eine Web-Anwendung, die es ermöglicht,
+                    Cypher-Abfragen zu einer Neo4j-Datenbank zu schicken sowie ihre Ergebnisse zu visualisieren.
+                    Wenn Sie diesen Text lesen können, verwenden Sie bereits den Neo4j Browser.
+                    Sie müssen daher nichts installieren (außer einen Browser Ihrer Wahl).</p>
+            </div>
+        </slide>
+
+        <!-- Erste Schritte -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Erste Schritte</h3>
+                <p class="lead">Bedienungsanleitung des Neo4j Browsers</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie verwende ich den Neo4j Browser?</b></h4>
+                <p>Der Neo4j Browser besteht aus zwei Hauptbereichen:</p>
+                <ol>
+                    <li style="list-style-type: circle;"><b><code>neo4j$_</code> Abfragebereich (oben)</b>:
+                        Hier können Sie Ihre Cypher-Abfragen formulieren und ausführen.
+                    </li>
+                    <li style="list-style-type: circle;"><code>$_</code> <b>Ergebnisbereich (darunter)</b>:
+                        Hier werden die Ergebnisse Ihrer Abfragen in Abschnitten angezeigt.
+                    </li>
+                </ol>
+                <br>
+                <h4><b>Bedienungshinweise</b></h4>
+                <p>Bitte beachten Sie folgende Buttons (rechts oben) und ihre Funktionen:</p>
+                <ul>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/pin.png" style="display: inline;">
+                        Die aktuelle Abfrage und ihre Ergebnisse werden angepinnt.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/hut.png" style="display: inline;">
+                        Die aktuelle Abfrage und ihre Ergebnisse werden ausgeblendet.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/fullscreen.png"
+                             style="display: inline;">
+                        Die aktuelle Abfrage und ihre Ergebnisse werden in Fullscreen angezeigt.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/close.png" style="display: inline;">
+                        Die aktuelle Abfrage und ihre Ergebnisse werden gelöscht.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/run.png" style="display: inline;">
+                        Die aktuelle Abfrage wird ausgeführt und das Ergebnis angezeigt.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/star.png" style="display: inline;">
+                        Die aktuelle Abfrage wird gespeichert. Diese können Sie in der Taskleiste links finden.
+                    </li>
+                </ul>
+                <p>Wir empfehlen, dieses Tutorial mittels
+                    <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/pin.png" style="display: inline;">
+                    anzupinnen, sodass die Anleitung nicht nach unten verrutscht.</p>
+            </div>
+        </slide>
+
+        <!-- Datensatz -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>CityGML3-Datensatz</h3>
+                <p class="lead">Graph eines Gebäudes am TUM-Campus in München</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Um welchen CityGML3-Datensatz handelt es sich?</b></h4>
+                <p>In diesem Tutorial wird der Graph eines CityGML3-Datensatzes eines Gebäudes
+                    am TUM-Campus in München verwendet.
+                    Der Datensatz ist 428 MB groß und wurde von IFC-Dateien konvertiert.
+                    Die entsprechende Graphdatenbank ist 1.16 GB groß.
+                    Unten finden Sie eine Visualisierung des Gebäudes in KITModelViewer:</p>
+                <figure>
+                    <img src="https://tulrgislindau1.gis.lrg.tum.de:4443/img/TUM_Geb07_1.png" alt="TUM Gebäude"
+                         width="700">
+                    <figcaption>Quelle: 3D-Visualisierung eines TUM-Gebäudes mithilfe von KITModelViewer</figcaption>
+                </figure>
+            </div>
+        </slide>
+
+        <!-- Basic Zählen -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Zählen von Knoten (1)</h3>
+                <p class="lead">Zählen von Knoten mit Labels</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie viele Knoten gibt es insgesamt?</b></h4>
+                <p>In einem CityGML-Graphen repräsentieren Knoten Stadtobjekte und Kanten ihre Beziehungen.
+                    Attribute dieser CityGML-Objekte werden entsprechend als Attribute in Knoten und Kanten
+                    gespeichert.</p>
+                <p>Die Gesamtanzahl der Knoten in dieser Graphdatenbank kann wie folgt abgefragt werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n) RETURN count(n)</pre>
+                </figure>
+                <p>Klicken Sie auf den <b>Play-Button am Anfang</b> des Codes,
+                    um die Abfrage sofort auszuführen und das Ergebnis zu sehen.</p>
+                <h4><b>Wie viele Gebäude gibt es?</b></h4>
+                <p>Analog kann die Anzahl der Gebäude in der Graphdatenbank wie folgt abgefragt werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building) RETURN count(b)</pre>
+                </figure>
+                <p>In Neo4j, jeder Knoten kann Labels haben, die Typen repräsentieren.
+                    Die obengezeigte Abfrage verwendet das Label <code>Building</code>,
+                    um alle Building-Knoten zu zählen.</p>
+            </div>
+        </slide>
+
+        <!-- Basic Zählen -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Zählen von Knoten (2)</h3>
+                <p class="lead">Zählen von Knoten mit Labels</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie viele Door- und Window-Objekte gibt es insgesamt?</b></h4>
+                <p>Analog kann die Gesamtanzahl der Türen und Fenster in dieser Graphdatenbank wie folgt abgefragt
+                    werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (d:Door) RETURN count(d)</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (w:Window) RETURN count(w)</pre>
+                </figure>
+                <h4><b>Übersicht aller Knoten mit Labels?</b></h4>
+                <p>Wahrscheinlich haben Sie sich jetzt bereits gefragt,
+                    wie eine Übersicht aller Knoten mit ihren Labels ausgegeben werden kann.
+                    Dies kann durch die folgende Abfrage erreicht werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (n:`__PARTITION_INDEX__0`)
+WHERE NOT n:`__ARRAY__` AND NOT n:`org.xmlobjects.model.ChildList`
+WITH reduce(str = "", l IN labels(n) | str + " " + replace(l, "__PARTITION_INDEX__0", "")) AS label
+WITH ltrim(last(split(label, "."))) AS label, count(label) AS count
+RETURN label, count
+ORDER BY count DESC</pre>
+                </figure>
+                <p>Aufgrund der hohen Anzahl der Knoten in der Datenbank dauert es ein paar Sekunden,
+                    bis Sie die Ergebnisse erhalten.
+                    Diese Abfrage ist syntaktisch komplex, aber ihre Ergebnisse sind sehr überschaubar.</p>
+            </div>
+        </slide>
+
+        <!-- Visualisierung -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Visualisierung (1)</h3>
+                <p class="lead">Interaktive Visualisierung der Graphen</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie sieht ein Building-Knoten aus?</b></h4>
+                <p>Ein Building-Knoten kann wie folgt abgefragt und visualisiert werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building) RETURN b LIMIT 1</pre>
+                </figure>
+                <p>Mit <code>LIMIT 1</code> wird zufällig ein Building-Knoten ausgegeben (falls mehrere existieren).
+                    Dies ist hilfreich, wenn eine große Anzahl von Knoten eines Typs existieren.</p>
+                <p>Wenn Sie die GMLID eines Gebäudes kennen, können Sie die folgende Abfrage stattdessen ausführen:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"}) RETURN b</pre>
+                </figure>
+                <p>In diesem Graphen werden GMLID-Attribute als <code>id</code> gespeichert.</p>
+                <p><b>Klicken Sie auf den ausgegebenen Knoten</b> im Neo4j Browser,
+                    um seine Attribute rechts zu sehen.</p>
+                <p><b>Doppel-Klicken Sie auf den jeweiligen Knoten</b>, um ihre Kindknoten zu zeigen.</p>
+            </div>
+        </slide>
+
+        <!-- Visualisierung -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Visualisierung (2)</h3>
+                <p class="lead">Interaktive Visualisierung der Graphen</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie sieht ein Building-Knoten und seine Kindknoten aus?</b></h4>
+                <p>Ein Building-Knoten und seine Kinder können wie folgt abgefragt und visualisiert werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"})-[]->() RETURN graph</pre>
+                </figure>
+                <p>Mit <code>(n)-[r]->(m)</code> wird ein Pfad mit einer Kante <code>r</code>
+                    zwischen Startknoten <code>n</code> und Endknoten <code>m</code> beschrieben.</p>
+                <h4><b>Wie sieht der Pfad zwischen einem Gebäude und einem seiner Nachkommen aus?</b></h4>
+                <p>Der Pfad zwischen einem Gebäude und einem seiner Räume, einer seiner Türen und eines seiner Fenser
+                    kann wie folgt abgefragt und visualisiert werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building)-[*]->(r:BuildingRoom) RETURN graph LIMIT 1</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building)-[*]->(r:Door) RETURN graph LIMIT 1</pre>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building)-[*]->(r:Window) RETURN graph LIMIT 1</pre>
+                </figure>
+                <p>Mit <code>(n)-[*]->(m)</code> können alle Pfade beliebiger Länge
+                    zwischen <code>n</code> und <code>m</code> berücksichtigt werden.
+                    Dies ist hilfreich, wenn Sie nur den Start- und Endknoten kennen
+                    aber nicht ausführlich wissen, die der Graph strukturiert.</p>
+            </div>
+        </slide>
+
+        <!-- Visualisierung -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Visualisierung (3)</h3>
+                <p class="lead">Interaktive Visualisierung der Graphen</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie sieht der gesamte Subgraph eines Raums aus?</b></h4>
+                <p>Die gesamte Subgraph-Repräsentation eines Raums eines Gebäudes
+                    kann wie folgt abgefragt und visualisiert werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"})-[*]->(r:BuildingRoom)
+WITH r LIMIT 1
+MATCH graph=(r)-[*]->()
+RETURN graph</pre>
+                </figure>
+                <p>Da es mehrere Räume existieren können, wird hier nur ein Raum selektiert,
+                    dessen gesamter Subgraph ausgegeben wird.</p>
+                <p><b>Bitte beachten Sie</b>: Vermeiden Sie das Abfragen großer Graphen mit Tausenden von Knoten,
+                    da Neo4j Browser nur eine bestimmte (kleine) Anzahl von Knoten visualisieren kann.
+                    Daher wird in diesem Tutorial nur Subgraphen von Räumen abgefragt,
+                    da sie relativ klein im Verlgleich zum Graphen eines Gebäudes sind.</p>
+            </div>
+        </slide>
+
+        <!-- Thematische Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thema. Queries (1)</h3>
+                <p class="lead">Interaktives Abfragen thematischer Daten</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie sind die Namen der Räume eines Gebäudes?</b></h4>
+                <p>Zuerst möchten wir die Namen aller Räume in einem Gebäude zurückgeben.
+                    Dies kann wie folgt erreicht werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"})-[*]->(r:BuildingRoom)-[:names]->()-[*]->(c:Code)
+RETURN DISTINCT c.value AS raum
+ORDER BY raum ASC</pre>
+                </figure>
+                <p>Die obige Abfrage sucht von einem Gebäude aus nach allen Räumen,
+                    und von jedem Raum aus nach seinen Namen.
+                    In CityGML 3.0 kann ein Raum mehrere Namen enthalten.
+                    Diese Namen sind als <code>Code</code> gespeichert.</p>
+                <p>Die Namen werden in aufsteigender Reihenfolge sortiert durch <code>ORDER BY ... ASC</code>
+                    und Duplikate werden dabei entfernt durch <code>DISTINCT</code>.</p>
+            </div>
+        </slide>
+
+        <!-- Thematische Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thema. Queries (2)</h3>
+                <p class="lead">Interaktives Abfragen thematischer Daten</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Wie groß sind die Flächen und Volumen der einzelnen Räume eines Gebäudes?</b></h4>
+                <p>CityGML 3.0 erlaubt die explizite Speicherung von Flächen und Volumen von Räumen eines Gebäudes.
+                    Diese thematischen Attribute können wie folgt abgefragt werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"})-[*]->(r:BuildingRoom),
+(r)-[:names]->()-[*]->(c:Code),
+(r)-[:areas]->()-[*]->(a:Area),
+(r)-[:volumes]->()-[*]->(v:Volume)
+RETURN DISTINCT c.value AS raum, toFloat(a.value) AS flaeche, toFloat(v.value) AS volumen
+ORDER BY raum ASC</pre>
+                </figure>
+                <p>Die Methode <code>toFloat(s)</code> wandelt einen String <code>s</code> in eine reelle Zahl um.</p>
+                <p>Die zurückgegebenen Flächen und Volumen sind standardmäßig
+                    in Quadratmeter (m<sup>2</sup>) und Kubikmeter (m<sup>3</sup>) angegeben.
+                    Diese können mithilfe von <code>a.uom</code> bzw. <code>v.uom</code>
+                    in der obigen Abfrage überprüft werden.</p>
+            </div>
+        </slide>
+
+        <!-- Thematische Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Thema. Queries (3)</h3>
+                <p class="lead">Interaktives Abfragen thematischer Daten</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Welche Räume sind größer als 100 m<sup>2</sup> und 500 m<sup>3</sup>?</b></h4>
+                <p>Sie haben vor, künftig eine Veranstaltung in diesem Gebäude der TUM zu organisieren.
+                    Dabei benötigen Sie einen großen Raum mit Fläche über 100 m<sup>2</sup>
+                    und Volumen über 500 m<sup>3</sup>.
+                    Dies kann wie folgt abgefragt werden:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building {id: "id4d6b8271-8983-4da1-ae4d-682c0cce8aa6"})-[*]->(r:BuildingRoom),
+(r)-[:names]->()-[*]->(c:Code),
+(r)-[:areas]->()-[*]->(a:Area),
+(r)-[:volumes]->()-[*]->(v:Volume)
+WITH DISTINCT c.value AS raum, toFloat(a.value) AS flaeche, toFloat(v.value) AS volumen
+WHERE flaeche > 100 AND volumen > 500
+RETURN raum, flaeche, volumen
+ORDER BY flaeche DESC, volumen DESC, raum ASC</pre>
+                </figure>
+                <p>Mit <code>WHERE</code> können Bedingungen angegeben werden.</p>
+                <p>Diese Abfrage gibt die Ergebnisse sortiert zurück, und zwar zuerst mit absteigenden Flächen,
+                    bei gleichen Flächen mit absteigenden Volumen, und bei gleichen Volumen mit aufsteigenden
+                    Raumnamen.</p>
+            </div>
+        </slide>
+
+        <!-- Thematische Queries -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Zusammenfassung</h3>
+                <p class="lead">Fazit und Ausblick</p>
+                <p class="lead"><i>3D-Forum Lindau Workshop 15.05.2024</i></p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Fazit</b></h4>
+                <p>Mit diesem Tutorial haben wir Folgendes gezeigt:</p>
+                <ol>
+                    <li style="list-style-type: circle;">
+                        CityGML 3.0-Datensätzen können hervorragend als Graphen repräsentiert und verwendet werden.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        Neo4j, Cypher und Neo4j Browser können große Graphen speichern, abfragen und analysieren.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        CityGML 3.0 verfügt über zahlreiche thematische Daten,
+                        die mithilfe von Graphen sehr effizient abgefragt werden können,
+                        was in relationalen Datenbanken hätte sehr viel Zeit benötigen können.
+                    </li>
+                    <li style="list-style-type: circle;">
+                        Jedoch kann die aktuelle Version von Neo4j nur wenige räumliche Operationen unterstützen.
+                        Momentan werden nur Punkte unterstützt;
+                        diese müssen aber als eigene Objekte in Neo4j neudefiniert werden.
+                    </li>
+                </ol>
+                <br>
+                <h4><b>GitHub</b></h4>
+                <p>Mit diesem <a href="https://github.com/tum-gis/citymodel-compare" target="_blank">GitHub-Link</a>
+                    finden Sie die Implementierung zum Abbilden
+                    von CityGML-Datensätzen (sowohl 2.0 als auch 3.0) auf Graphen.
+                    Diese Abbildung ist ein Teil meiner Doktorarbeit,
+                    die Änderungen zwischen zwei temporal unterschiedlichen Versionen eines CityGML-Datensatzes
+                    anhand ihrer Graphrepräsentationen detektiert und interpretiert.</p>
+                <h4><b>Neugierig?</b></h4>
+                <p>Sie haben Interesse an CityGML 3.0 und Graphen? Schreiben Sie mir gerne eine E-Mail:</p>
+                <ul>
+                    <li style="list-style-type: circle;"><b>Son H. Nguyen, M.Sc.</b>
+                        | <a href="mailto:son.nguyen@tum.de" target="_blank">E-Mail</a>
+                        | <a href="https://www.asg.ed.tum.de/en/gis/our-team/staff/son-h-nguyen/" target="_blank">Webseite</a>
+                        | <a href="https://www.linkedin.com/in/son-h-nguyen/" target="_blank">LinkedIn</a>
+                    </li>
+                </ul>
+            </div>
+        </slide>
+    </carousel>
+</article>

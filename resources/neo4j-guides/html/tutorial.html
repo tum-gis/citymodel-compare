@@ -19,13 +19,13 @@
                 <ol>
                     <!--<li>Introduction to the <b>database</b></li>-->
                     <!--<li>Manuals on how to use <b>Cypher</b> and <b>Neo4j Browser</b></li>-->
-                    <li>Basic queries to <b>count</b> nodes and city objects</li>
-                    <li>Inspecting the <b>graph content</b> of a city object</li>
-                    <li>Queries to retrieve and process <b>thematic attributes</b></li>
-                    <li>Queries to retrieve and process <b>geometric objects</b></li>
-                    <li>Example queries used to <b>analyse detected changes</b></li>
-                    <li>Example queries used to <b>analyse interpreted changes</b></li>
-                    <li>Further resources on the <b>implementation</b></li>
+                    <li style="list-style-type: disc;">Basic queries to <b>count</b> nodes and city objects</li>
+                    <li style="list-style-type: disc;">Inspecting the <b>graph content</b> of a city object</li>
+                    <li style="list-style-type: disc;">Queries to retrieve and process <b>thematic attributes</b></li>
+                    <li style="list-style-type: disc;">Queries to retrieve and process <b>geometric objects</b></li>
+                    <li style="list-style-type: disc;">Example queries used to <b>analyse detected changes</b></li>
+                    <li style="list-style-type: disc;">Example queries used to <b>analyse interpreted changes</b></li>
+                    <li style="list-style-type: disc;">Further resources on the <b>implementation</b></li>
                 </ol>
                 <br>
 
@@ -212,16 +212,18 @@ RETURN count(b)</pre>
                     <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__1`)
 RETURN count(b)</pre>
                 </figure>
-                <!--<p>The label values are the <b>unique class names</b> of CityGML objects in Java using citygml4j.
-                    These values must be unique and identifiable not only for semantic indexing in the database,
-                    but also for the reconstruction process that
-                    converts graphs back to their original CityGML objects.</p>-->
                 <p>In this database, city objects are often assigned with <b>two labels</b>: one storing their type,
                     the other their original dataset.</p>
                 <p>In Neo4j Browser, after typing <code>MATCH (n:</code>,
                     a list of available labels will be suggested and updated
                     as the user enters the labels for <code>n</code>.
                     To display the autosuggestion list again, press <code>Ctrl + Space</code>.</p>
+                <p><b>Please note</b>: In the implementation of this research,
+                    node labels are used to store the valid class names of CityGML objects in Java using citygml4j,
+                    such as <code>org.citygml4j.model.citygml.building.Building</code>.
+                    These values are stored this way, so that the reverse-mapper can create object instances
+                    of such classes from graphs. However, as they tend to be long, for demonstrating purposes,
+                    some of the most common labels are simplified, such as to only <code>Building</code>.</p>
                 <h4><b>Count Building Parts per Dataset</b></h4>
                 <p>Similarly, the total number of building parts per dataset can be queried using:</p>
                 <figure>
@@ -425,9 +427,9 @@ RETURN b LIMIT 1</pre>
                 <p>The graph shown above has depth <code>1</code>.
                     To extend this graph to depth <code>h</code>, use the following query:</p>
                 <figure>
-                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[*h]->() RETURN graph</pre>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(b:Building:`__PARTITION_INDEX__0` {id: "DEHH_5f9263ed-5a6b-4599-8236-25c1b61b9141"})-[*3]->() RETURN graph</pre>
                 </figure>
-                <p>Replace the value of <code>h</code> to any positive number.</p>
+                <p>Here, the value of <code>h</code> is 3.</p>
                 <h4><b>Visualize entire Building Subgraph</b></h4>
                 <p>The following query visualizes the entire subgraph content of a single building:</p>
                 <figure>
@@ -496,7 +498,7 @@ WHERE b.storeysAboveGround IS NOT NULL
 WITH count(b) AS with_storeys
 MATCH (b:Building:`__PARTITION_INDEX__0`)
 WITH with_storeys, count(b) AS total
-RETURN with_storeys, total, round(with_storeys*100.0/total) AS percent</pre>
+RETURN with_storeys, total, round(with_storeys * 100.0 / total) AS percent</pre>
                 </figure>
                 <p>This query first counts the number of buildings with existing floor information
                     using <code>IS NOT NULL</code>, then divides it by the total number of all buildings
@@ -523,7 +525,7 @@ WHERE toInteger(b.storeysAboveGround) > 1
 RETURN count(b)</pre>
                 </figure>
                 <p>This query automatically exludes buildings
-                    that do not have the attribute <code>storeysAboveGround</code></p>
+                    that do not have the attribute <code>storeysAboveGround</code>.</p>
                 <h4><b>Get Overview of all Available Floors and Count Buildings</b></h4>
                 <p>The following query returns the number of buildings with respect to their number of storeys:</p>
                 <figure>
@@ -653,7 +655,237 @@ RETURN count(footprint)</pre>
                     then retrieve and process them using third-party spatial libraries, as implemented here.
                     However, even this approach cannot replace a native spatial index.</p>
                 </p>
-                </p>
+            </div>
+        </slide>
+
+        <!-- Analyse Changes -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Changes (1)</h3>
+                <p class="lead">Retrieve detected changes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Find all Detected Changes</b></h4>
+                <p>To find all changes detected between the old and new datasets:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:Change) RETURN count(c)</pre>
+                </figure>
+                <h4><b>List all Detected Changes by Class</b></h4>
+                <p>To further list all detected changes by their class:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:Change)
+RETURN labels(c) AS labels, count(c) AS count
+ORDER BY count DESC</pre>
+                </figure>
+                <p>As observed from the results, the implementation is capable of detecting the following changes
+                    directly when comparing the graph contents and structures of both datasets:</p>
+                <ul>
+                    <li style="list-style-type: disc;"><code>InsertNodeChange</code>: Inserted objects</li>
+                    <li style="list-style-type: disc;"><code>DeleteNodeChange</code>: Deleted objects</li>
+                    <li style="list-style-type: disc;"><code>InsertPropChange</code>: Inserted properties</li>
+                    <li style="list-style-type: disc;"><code>DeletePropChange</code>: Deleted properties</li>
+                    <li style="list-style-type: disc;"><code>UpdatePropChange</code>: Updated properties</li>
+                    <li style="list-style-type: disc;"><code>SizeChange</code>: Resized surfaces in 3D</li>
+                    <li style="list-style-type: disc;"><code>TranslationChange</code>: Translated surfaces in 3D</li>
+                    <li style="list-style-type: disc;"><code>TopSplitChange</code>: Divided top-level features</li>
+                </ul>
+            </div>
+        </slide>
+
+        <!-- Analyse Changes -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Changes (2)</h3>
+                <p class="lead">Inspect how changes are stored</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Inspect Graph Representations of Changes</b></h4>
+                <p>To inspect how the detected changes are stored in the graphs:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:InsertNodeChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of an inserted node change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:DeleteNodeChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of a deleted node change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:InsertPropChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of an inserted property change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:DeletePropChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of a deleted property change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:UpdatePropChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of an updated property change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:SizeChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of a resized surface change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:TranslationChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of a translated surface change</figcaption>
+                </figure>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:TopSplitChange)
+WITH c LIMIT 1
+MATCH graph=(c)-[*1]->()
+RETURN graph</pre>
+                    <figcaption>Graph representation of a top-level split change</figcaption>
+                </figure>
+            </div>
+        </slide>
+
+        <!-- Analyse Changes -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Changes (3)</h3>
+                <p class="lead">Deleted and inserted buildings</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Find all Inserted Buildings</b></h4>
+                <p>A building is considered to have been inserted if
+                    it only exists in the new dataset and there is no matching building from the old dataset.</p>
+                <p>To find all inserted buildings:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:InsertNodeChange)
+WHERE exists((c)-[:TANDEM]->()-[:ARRAY_MEMBER]->()-[:object]->(:Building))
+RETURN count(c)</pre>
+                </figure>
+                <p>The function <code>exists(path)</code> examines whether the current change node
+                    is attached to an array node of all buildings
+                    (as buildings are organized as elements of arrays).
+                    If this is the case, the current insert node change reflects an inserted building.</p>
+                <h4><b>Find all Deleted Buildings</b></h4>
+                <p>To find all deleted buildings:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:DeleteNodeChange)
+WHERE exists((c)-[:LEFT_NODE]->()-[:object]->(:Building))
+RETURN count(c)</pre>
+                </figure>
+                <p>These inserted and deleted buildings can then be spatially visualized
+                    using their bounding boxes (here: an excerpt area of Hamburg;
+                    inserted buildings are shown as green, deleted as red):</p>
+                <img src="http://localhost:8001/html/img/hamburg_buildings_inserted_deleted_large.jpg" width="700">
+            </div>
+        </slide>
+
+        <!-- Analyse Interpretations -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Interpretations (1)</h3>
+                <p class="lead">Retrieve semantics of interpreted changes</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>List all Interpretation Types</b></h4>
+                <p>When changes and change patterns are interpreted, their interpretation nodes are stored
+                    also as <code>Change</code> nodes.
+                    To differentiate between changes and their interpretations, as well as among interpretation nodes,
+                    an attribute <code>change_type</code> is introduced to each node.
+                    This attribute reflects the type, semantic context, and the source contents
+                    where changes occurred and interpretations took place.</p>
+                <p>To list all values of this attribute:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:Change)
+RETURN c.change_type AS change_type, count(c) AS count
+ORDER BY change_type</pre>
+                </figure>
+                <p>For instance, an interpretation node with <code>change_type = "RaisedBuildingRoofs"</code>
+                    indicates that the roof surfaces of a building have been moved upwards
+                    (without changing their shapes and sizes).</p>
+            </div>
+        </slide>
+
+        <!-- Analyse Interpretations -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Interpretations (2)</h3>
+                <p class="lead">Retrieve all buildings updated on same date</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>List all Buildings Updated on Same Date</b></h4>
+                <p>In CityGML, the attribute <code>creationDate</code> of a building is used
+                    to indicate the date when the building has been updated or created in the dataset.
+                    By aggregating all buildings with updated <code>creationDate</code> attribute
+                    and grouping those with the same updated values, meaning interpretations can be deduced.
+                    For instance: To show that the entire city model has been updated gradually over a number of days;
+                    on each day a region of the city is updated.</p>
+                <p>To list all groups of buildings that were updated on the same date:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH graph=(c:CityModel:`__PARTITION_INDEX__0`)<-[:SCOPED_TO]-(n {change_type: "UpdatedBuildingCreationDate"})
+RETURN graph</pre>
+                </figure>
+                <p>The node <code>CityModel</code> is the anchor of scope nodes, which are interpretation nodes
+                    that reveal the scope (global, clustered, local) of a specific change.
+                    In this case, these scope nodes store the spatial bounding boxes containing all buildings
+                    that share the same updated <code>creationDate</code> values.</p>
+                <p>As seen from the results, there are 14 scope nodes attached to the <code>CityModel</code> node.
+                    These 14 nodes represent 14 regions on the city.
+                    All buildings within each region were updated on the same date.</p>
+                <h4><b>List all Updated Dates</b></h4>
+                <p>The updated values of all these dates can be retrieved using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (c:CityModel:`__PARTITION_INDEX__0`)<-[:SCOPED_TO]-(n {change_type: "UpdatedBuildingCreationDate"})
+RETURN n.RIGHT_PROPERTY_VALUE AS updated_date, toInteger(n.number_type_count) AS nr_buildings
+ORDER BY updated_date</pre>
+                </figure>
+                <p>All queries shown above can yield results quickly and efficiently using this implementation in a graph database.
+                    This particular query may have been much more challenging using relational databases.</p>
+            </div>
+        </slide>
+
+        <!-- Analyse Interpretations -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Analyse Interpretations (3)</h3>
+                <p class="lead">Change interpretation of the Grüner Bunker</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Inspect Changes of the Grüner Bunker</b></h4>
+                <p>The building Grüner Bunker in Hamburg underwent major renovations between 2019 and 2022.
+                    The building consists of 10 different building parts, each of which has become higher
+                    with different height offsets after the construction work. </p>
+                <p>To inspect interpreted changes of these building parts:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_06659bf2-9266-4ea7-b0de-8d46fbfdb58f"})-[*]->(bp:BuildingPart:`__PARTITION_INDEX__0`),
+path1=(b)-[*1]-(:Change),
+path2=(bp)-[*1]-(:Change)
+RETURN path1, path2</pre>
+                </figure>
+                <h4><b>List all Height Offsets of these Building Parts</b></h4>
+                <p>The differences in heights of the individual building parts can be listed using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_06659bf2-9266-4ea7-b0de-8d46fbfdb58f"})-[*]->(bp:BuildingPart:`__PARTITION_INDEX__0`),
+(bp)-[*1]-(c:Change {change_type: "UpdatedBuildingPartMeasuredHeight"})
+RETURN round(toFloat(c.RIGHT_PROPERTY_VALUE) - toFloat(c.LEFT_PROPERTY_VALUE), 1) AS height_offset
+ORDER BY height_offset DESC</pre>
+                </figure>
+                <p>These results can be spatially visualized as follows:</p>
+                <img src="http://localhost:8001/html/img/gruener_bunker_height_offsets.png" width="700">
             </div>
         </slide>
 

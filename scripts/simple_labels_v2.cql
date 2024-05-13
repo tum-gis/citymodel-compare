@@ -1,5 +1,59 @@
 // Change long labels to shorter ones (for CityGML 3.0)
 
+// Change
+MATCH (n:`jgraf.neo4j.diff.Change`)
+REMOVE n:`jgraf.neo4j.diff.Change`
+SET n:Change
+
+// Index Change
+CREATE INDEX simple_change_change_type IF NOT EXISTS
+FOR (n:Change) ON (n.change_type)
+
+// InsertNodeChange
+MATCH (n:`jgraf.neo4j.diff.InsertNodeChange`)
+REMOVE n:`jgraf.neo4j.diff.InsertNodeChange`
+SET n:InsertNodeChange
+
+// DeleteNodeChange
+MATCH (n:`jgraf.neo4j.diff.DeleteNodeChange`)
+REMOVE n:`jgraf.neo4j.diff.DeleteNodeChange`
+SET n:DeleteNodeChange
+
+// InsertPropChange
+MATCH (n:`jgraf.neo4j.diff.InsertPropChange`)
+REMOVE n:`jgraf.neo4j.diff.InsertPropChange`
+SET n:InsertPropChange
+
+// DeletePropChange
+MATCH (n:`jgraf.neo4j.diff.DeletePropChange`)
+REMOVE n:`jgraf.neo4j.diff.DeletePropChange`
+SET n:DeletePropChange
+
+// UpdatePropChange
+MATCH (n:`jgraf.neo4j.diff.UpdatePropChange`)
+REMOVE n:`jgraf.neo4j.diff.UpdatePropChange`
+SET n:UpdatePropChange
+
+// SizeChange
+MATCH (n:`jgraf.neo4j.diff.SizeChange`)
+REMOVE n:`jgraf.neo4j.diff.SizeChange`
+SET n:SizeChange
+
+// TranslationChange
+MATCH (n:`jgraf.neo4j.diff.TranslationChange`)
+REMOVE n:`jgraf.neo4j.diff.TranslationChange`
+SET n:TranslationChange
+
+// TopSplitChange
+MATCH (n:`jgraf.neo4j.diff.TopSplitChange`)
+REMOVE n:`jgraf.neo4j.diff.TopSplitChange`
+SET n:TopSplitChange
+
+// CityModel
+MATCH (n:`org.citygml4j.model.citygml.core.CityModel`)
+REMOVE n:`org.citygml4j.model.citygml.core.CityModel`
+SET n:CityModel
+
 // Building
 MATCH (n:`org.citygml4j.model.citygml.building.Building`)
 REMOVE n:`org.citygml4j.model.citygml.building.Building`

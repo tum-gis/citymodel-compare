@@ -517,11 +517,12 @@ RETURN with_storeys, total, round(with_storeys * 100.0 / total) AS percent</pre>
                 <p class="lead">Comparison of thematic attributes</p>
             </div>
             <div class="col-sm-9">
-                <h4><b>Return Buildings with more than One Floor</b></h4>
-                <p>The number of buildings higher than one storey can be retrieved as follows:</p>
+                <h4><b>Return Buildings with Number of Floors in a Range</b></h4>
+                <p>The number of buildings with number of floors between 5 and 10 can be retrieved as follows:</p>
                 <figure>
                     <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0`)
-WHERE toInteger(b.storeysAboveGround) > 1
+WITH b, toInteger(b.storeysAboveGround) as nr
+WHERE nr >= 5 AND nr <= 10
 RETURN count(b)</pre>
                 </figure>
                 <p>This query automatically exludes buildings
@@ -552,7 +553,7 @@ RETURN nr_storey, count</pre>
             </div>
             <div class="col-sm-9">
                 <h4><b>Query Bounding Box of a Building</b></h4>
-                <p>During mapping, the implementation actively checks whether a bounding shape (envelop) exists
+                <p>During mapping, the implementation actively checks whether a bounding shape (envelope) exists
                     for a CityGML feature. If it is not the case, a bounding shape shall be computed.
                     In both cases, the bounding shape or bounding box is always stored in the graphs.</p>
                 <p>To inspect how such a bounding box is stored in the graph relative to the building:</p>
@@ -853,7 +854,8 @@ RETURN graph</pre>
 RETURN n.RIGHT_PROPERTY_VALUE AS updated_date, toInteger(n.number_type_count) AS nr_buildings
 ORDER BY updated_date</pre>
                 </figure>
-                <p>All queries shown above can yield results quickly and efficiently using this implementation in a graph database.
+                <p>All queries shown above can yield results quickly and efficiently using this implementation in a
+                    graph database.
                     This particular query may have been much more challenging using relational databases.</p>
             </div>
         </slide>

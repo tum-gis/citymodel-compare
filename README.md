@@ -529,6 +529,14 @@ Database_](https://mediatum.ub.tum.de/doc/1374646/1374646.pdf). Master thesis, 2
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Acknowledgement
+
+The development of these methods and implementations were supported 
+and partially funded by the company [CADFEM](https://www.cadfem.net/) 
+within a dedicated collaboration project in the context of the 
+[Leonhard Obermeyer Center (LOC)](https://www.ed.tum.de/loc) 
+at the [Technical University of Munich (TUM)](https://www.tum.de).
+
 ## Contact
 
 If you have any questions or suggestions, please contact:

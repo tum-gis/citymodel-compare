@@ -1,21 +1,5 @@
 # Change Log
 
-### dev - Pending
-
-Pending changes for the next dev release.
-
-##### NEW
-
-* **LoD Changes**: Added support for LoD changes in geometries,
-  see [`e59b819`](https://github.com/tum-gis/citymodel-compare/commit/e59b81922dfff9a335cc442b6e4fd95087f8e91b).
-  The difference in LoDs is calculated based on the highest available LoD of the two compared geometries.
-  If such a deviation is detected, a corresponding change node is created and attached to the source nodes in the graph
-  database.
-
-* **CSV Export of Changes**: Detected changes are now exported to CSV files,
-  see [`190ca36`](https://github.com/tum-gis/citymodel-compare/commit/190ca366c9156d32953ef0b84e5e6e7d1671edee).
-  The location of the directory of these CSV files is specified in the config file in the directory `config`. 
-
 ### v1.0.0-dev - Released
 
 This is a development release containing additional features, which extend from the
@@ -23,8 +7,7 @@ base [release v1.0.0](https://github.com/tum-gis/citymodel-compare/releases/tag/
 summarized as follows:
 
 + **Multi-module Support**: CityGML top-level features from most thematic modules, such as buildings, bridges, tunnels,
-  vegetation, etc. can now be mapped and matched using the same graph database. Currently, city object groups are
-  excluded from the matching process.
+  vegetation, etc. can now be mapped and matched using the same graph database.
 
 + **3D Spatial Matching**: In addition to R-tree of 2D footprints, the height information is also considered while
   finding the best match for 3D CityGML top-level features, such as tunnels and trees.
@@ -48,5 +31,21 @@ summarized as follows:
     + Matching of attributed nodes now counts the number of their common properties with the same names and values.
 
     + Further refactoring and introduction of new helper functions.
+
+##### NEW
+
+* **LoD Changes**: Added support for LoD changes in geometries,
+  see [`e59b819`](https://github.com/tum-gis/citymodel-compare/commit/e59b81922dfff9a335cc442b6e4fd95087f8e91b).
+  The difference in LoDs is calculated based on the highest available LoD of the two compared geometries.
+  If such a deviation is detected, a corresponding change node is created and attached to the source nodes in the graph
+  database.
+
+* **CSV Export of Changes**: Detected changes are now exported to CSV files,
+  see [`190ca36`](https://github.com/tum-gis/citymodel-compare/commit/190ca366c9156d32953ef0b84e5e6e7d1671edee).
+  The location of the directory of these CSV files is specified in the config file in the directory `config`.
+
+* **CityGML Exporter**: It is now possible to export an entire graph back to their original CityGML datasets (versions
+  2.0 and 3.0) using Gradle,
+  see [`0a23164`](https://github.com/tum-gis/citymodel-compare/commit/0a23164f60502adf1359cb04f61787b346b31f54).
 
 ### v1.0.0 - Released

@@ -20,7 +20,6 @@ import org.citygml4j.geometry.Matrix;
 import org.citygml4j.model.citygml.CityGML;
 import org.citygml4j.model.citygml.bridge.BridgePartProperty;
 import org.citygml4j.model.citygml.building.*;
-import org.citygml4j.model.citygml.cityobjectgroup.CityObjectGroup;
 import org.citygml4j.model.citygml.core.*;
 import org.citygml4j.model.citygml.generics.*;
 import org.citygml4j.model.citygml.tunnel.TunnelPartProperty;
@@ -203,9 +202,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         batch.forEach(graphRef -> {
                             // Calculate bounding shape
                             Node topLevelNode = graphRef.getRepresentationNode(tx);
-                            if (topLevelNode.hasLabel(Label.label(SolitaryVegetationObject.class.getName()))) {
-                                System.out.println();
-                            }
                             AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode);
                             BoundingShape boundingShape = aco.calcBoundedBy(BoundingBoxOptions.defaults().assignResultToFeatures(true));
                             if (boundingShape == null) {
@@ -2218,6 +2214,55 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         });
 
         Neo4jDB.finishThreads(executorService, config.MAPPER_CONCURRENT_TIMEOUT);
+    }
+
+    @Override
+    public void exportCityGML(int partitionIndex, String exportFilePath) {
+        try (Transaction tx = graphDb.beginTx()) {
+            // Get the CityModel node
+            Node cityModelNode = tx.findNodes(Label.label(CityModel.class.getName()))
+                    .stream()
+                    .filter(node -> node.hasLabel(
+                            Label.label(AuxNodeLabels.__PARTITION_INDEX__.toString() + partitionIndex)))
+                    .findFirst()
+                    .get();
+
+            CityGMLContext ctx = CityGMLContext.getInstance();
+            CityGMLBuilder builder = ctx.createCityGMLBuilder();
+            CityGMLInputFactory in = builder.createCityGMLInputFactory();
+            //in.parseSchema(new File("datasets/schemas/CityGML-NoiseADE-2_0_0.xsd"));
+
+            CityGMLOutputFactory out = builder.createCityGMLOutputFactory(in.getSchemaHandler());
+            ModuleContext moduleContext = new ModuleContext(); // v2.0.0
+            FeatureWriteMode writeMode = FeatureWriteMode.NO_SPLIT; // SPLIT_PER_COLLECTION_MEMBER;
+
+            // set to true and check the differences
+            boolean splitOnCopy = false;
+
+            out.setModuleContext(moduleContext);
+            // out.setGMLIdManager(DefaultGMLIdManager.getInstance());
+            // out.setProperty(CityGMLOutputFactory.FEATURE_WRITE_MODE, writeMode);
+            // out.setProperty(CityGMLOutputFactory.SPLIT_COPY, splitOnCopy);
+
+            //out.setProperty(CityGMLOutputFactory.EXCLUDE_FROM_SPLITTING, ADEComponent.class);
+
+            CityGMLWriter writer = out.createCityGMLWriter(new File(exportFilePath), "utf-8");
+            writer.setPrefixes(moduleContext);
+            writer.setDefaultNamespace(moduleContext.getModule(CityGMLModuleType.CORE));
+            writer.setIndentString("  ");
+            writer.setHeaderComment("written by citygml4j",
+                    "using a CityGMLWriter instance",
+                    "Split mode: " + writeMode,
+                    "Split on copy: " + splitOnCopy);
+
+            CityModel cityModel = (CityModel) toObject(cityModelNode);
+            writer.write(cityModel);
+            writer.close();
+            logger.info("CityGML file written to {}", exportFilePath);
+            tx.commit();
+        } catch (CityGMLBuilderException | CityGMLWriteException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

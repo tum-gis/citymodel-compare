@@ -19,7 +19,11 @@ import org.citygml4j.core.model.core.CityModel;
 import org.citygml4j.core.model.core.EngineeringCRSProperty;
 import org.citygml4j.xml.CityGMLContext;
 import org.citygml4j.xml.CityGMLContextException;
+import org.citygml4j.xml.module.citygml.CoreModule;
 import org.citygml4j.xml.reader.*;
+import org.citygml4j.xml.writer.CityGMLOutputFactory;
+import org.citygml4j.xml.writer.CityGMLWriteException;
+import org.citygml4j.xml.writer.CityGMLWriter;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
@@ -34,6 +38,7 @@ import org.xmlobjects.gml.model.geometry.Envelope;
 import org.xmlobjects.gml.model.geometry.primitives.Solid;
 import org.xmlobjects.gml.util.EnvelopeOptions;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -321,6 +326,35 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     @Override
     protected void exportChangesCSV() {
         // TODO
+    }
+
+    @Override
+    public void exportCityGML(int partitionIndex, String exportFilePath) {
+        try (Transaction tx = graphDb.beginTx()) {
+            // Get the CityModel node
+            Node cityModelNode = tx.findNodes(Label.label(CityModel.class.getName()))
+                    .stream()
+                    .filter(node -> node.hasLabel(
+                            Label.label(AuxNodeLabels.__PARTITION_INDEX__.toString() + partitionIndex)))
+                    .findFirst()
+                    .get();
+
+            CityModel cityModel = (CityModel) toObject(cityModelNode);
+
+            CityGMLContext context = CityGMLContext.newInstance();
+            CityGMLVersion version = CityGMLVersion.v3_0;
+            CityGMLOutputFactory out = context.createCityGMLOutputFactory(version);
+            Path output = Path.of(exportFilePath);
+            try (CityGMLWriter writer = out.createCityGMLWriter(output, StandardCharsets.UTF_8.name())) {
+                writer.withIndent("  ")
+                        .withDefaultSchemaLocations()
+                        .withDefaultPrefixes()
+                        .withDefaultNamespace(CoreModule.of(version).getNamespaceURI())
+                        .write(cityModel);
+            }
+        } catch (CityGMLWriteException | CityGMLContextException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

@@ -959,6 +959,8 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
 
     protected abstract void exportChangesCSV();
 
+    public abstract void exportCityGML(int partitionIndex, String exportFilePath);
+
     public abstract void testImportAndExport(String importFilePath, String exportFilePath);
 
     public void exportRTreeFootprints(String folderPath) {

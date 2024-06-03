@@ -105,6 +105,28 @@ public abstract class Neo4jDB implements GraphDB {
         dbStats.stopTimer("Initialize database");
     }
 
+    @Override
+    public void openExisting() {
+        // Clean previous database
+        Path db = Path.of(config.DB_PATH);
+
+        // Init database
+        Path a = Path.of(config.NEO4J_PLUGIN_PATH);
+        managementService = (new DatabaseManagementServiceBuilder(db))
+                .loadPropertiesFromFile(Path.of(config.NEO4J_CONFIG_FILE))
+                //.setConfig(GraphDatabaseSettings.auth_enabled, false)
+                //.setConfig(BoltConnector.enabled, true)
+                //.setConfig(BoltConnector.listen_address, new SocketAddress("0.0.0.0", 7687)) // 0.0.0.0 allows outside access (such as via Docker)
+                //.setConfig(GraphDatabaseSettings.plugin_dir, Path.of(config.NEO4J_PLUGIN_PATH).toAbsolutePath())
+                //.setConfig(GraphDatabaseSettings.procedure_unrestricted, List.of("apoc.*"))
+                //.setConfig(GraphDatabaseSettings.procedure_allowlist, List.of("apoc.coll.*", "apoc.load.*"))
+                .build();
+        graphDb = managementService.database(config.DB_NAME);
+
+        registerShutdownHook(managementService);
+        logger.info("Opened existing neo4j database on " + config.DB_PATH);
+    }
+
     public void setIndex(Class<?> vertexClass, String propName) {
         try (Transaction tx = graphDb.beginTx()) {
             // Create automatic indexing while creating nodes

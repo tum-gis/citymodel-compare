@@ -269,10 +269,6 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         return StreamSupport.stream(node.getLabels().spliterator(), false)
                 .anyMatch(label -> {
                     try {
-                        if (CityObjectGroup.class.isAssignableFrom(Class.forName(label.name()))) {
-                            // TODO Skip CityObjectGroup for now
-                            return false;
-                        }
                         return AbstractCityObject.class.isAssignableFrom(Class.forName(label.name()));
                     } catch (ClassNotFoundException e) {
                         return false;

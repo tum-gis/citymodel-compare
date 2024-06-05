@@ -659,6 +659,71 @@ RETURN count(footprint)</pre>
             </div>
         </slide>
 
+        <!-- Check overlap -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Topological Queries (1)</h3>
+                <p class="lead">Check Overlap of Buildings</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Compute overlap between a given building and all others</b></h4>
+                <p>The following query searches for all buildings that are adjacent to a given one based on their
+                    footprints:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH (b:Building:`__PARTITION_INDEX__0` {id: "DEHH_b53cd81b-bb86-42c2-8c12-e3e11617dcb8"})-[:boundedBy]->()-[:envelope]->(e),
+(e)-[:lowerCorner]->()-[*]->(l:`__ARRAY__`),
+(e)-[:upperCorner]->()-[*]->(u:`__ARRAY__`)
+WITH b,
+    toFloat(l.`ARRAY_MEMBER[0]`) AS lx,
+    toFloat(l.`ARRAY_MEMBER[1]`) AS ly,
+    toFloat(u.`ARRAY_MEMBER[0]`) AS ux,
+    toFloat(u.`ARRAY_MEMBER[1]`) AS uy
+MATCH (_b:Building:`__PARTITION_INDEX__0`)-[:boundedBy]->()-[:envelope]->(e),
+(e)-[:lowerCorner]->()-[*]->(l:`__ARRAY__`),
+(e)-[:upperCorner]->()-[*]->(u:`__ARRAY__`)
+WITH b, _b, lx, ly, ux, uy,
+    toFloat(l.`ARRAY_MEMBER[0]`) AS _lx,
+    toFloat(l.`ARRAY_MEMBER[1]`) AS _ly,
+    toFloat(u.`ARRAY_MEMBER[0]`) AS _ux,
+    toFloat(u.`ARRAY_MEMBER[1]`) AS _uy
+WHERE NOT (lx > _ux OR _lx > ux OR ly > _uy OR _ly > uy) AND b.id <> _b.id
+RETURN _b</pre>
+                </figure>
+                <br>
+                <p>The condition <code>b.id <> _b.id</code> is necessary to exclude
+                    comparing the reference building to itself.</p>
+                <p><b>Note</b>: Due to the current lack of a 2D/3D spatial index in Neo4j,
+                    the query shown above retrieves the footprints and check for overlapping of all buildings.</p>
+            </div>
+        </slide>
+
+        <!-- Check overlap -->
+        <slide class="row-fluid">
+            <div class="col-sm-3">
+                <h3>Topological Queries (2)</h3>
+                <p class="lead">Find Neighbours of a Building</p>
+            </div>
+            <div class="col-sm-9">
+                <h4><b>Find neighbours of a given building</b></h4>
+                <p>For convenience, the neighbour relationships between each pair of buildings
+                    are also stored in the graph database. These can be simply retrieved using:</p>
+                <figure>
+                    <pre class="pre-scrollable code runnable">MATCH path=(b:Building:`__PARTITION_INDEX__0`
+    {id: "DEHH_b53cd81b-bb86-42c2-8c12-e3e11617dcb8"})
+    <-[:neighbour]-(:ADJACENCY)-[:neighbour]->()
+RETURN path</pre>
+                </figure>
+                <br>
+                <p>The node <code>ADJACENCY</code> represents a
+                    bidirectional neighbour relationship between two buildings.
+                    From this node, a relationship <code>neighbour</code> is assigned to each member building.</p>
+                <p>Such neighbour relationships can be easily created and attached to content nodes
+                    in the graph database. These can be quickly retrieved using simple Cypher queries
+                    as shown above. This enables efficient execution of highly complex queries
+                    that may have been difficult in relational databases.</p>
+            </div>
+        </slide>
+
         <!-- Analyse Changes -->
         <slide class="row-fluid">
             <div class="col-sm-3">

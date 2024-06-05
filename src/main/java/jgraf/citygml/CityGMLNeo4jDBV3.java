@@ -24,10 +24,7 @@ import org.citygml4j.xml.reader.*;
 import org.citygml4j.xml.writer.CityGMLOutputFactory;
 import org.citygml4j.xml.writer.CityGMLWriteException;
 import org.citygml4j.xml.writer.CityGMLWriter;
-import org.neo4j.graphdb.Label;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Relationship;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xmlobjects.gml.model.base.AbstractGML;
@@ -43,6 +40,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 
 public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     protected final static Logger logger = LoggerFactory.getLogger(CityGMLNeo4jDBV3.class);
@@ -68,7 +66,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             CityGMLContext context = CityGMLContext.newInstance();
             CityGMLInputFactory in
                     = context.createCityGMLInputFactory()
-                    .withChunking(ChunkOptions.defaults());
+                    .withChunking(ChunkOptions.chunkByFeatures());
             Path file = Path.of(filePath);
             logger.info("Reading CityGML v3.0 file {} chunk-wise into main memory", filePath);
 
@@ -116,10 +114,13 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
             resolveXLinks(resolveLinkRules(), correctLinkRules(), partitionIndex);
             dbStats.stopTimer("Resolve links of input file [" + partitionIndex + "]");
 
+            /*
             dbStats.startTimer();
             logger.info("Calculate and map bounding boxes of top-level features");
             calcTLBbox(topLevelNoBbbox, partitionIndex);
             dbStats.stopTimer("Calculate and map bounding boxes of top-level features");
+
+             */
 
             logger.info("Finished mapping file {}", filePath);
         } catch (CityGMLContextException | CityGMLReadException e) {
@@ -174,7 +175,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                 batch.forEach(graphRef -> {
                     // Calculate bounding shape
                     Node topLevelNode = graphRef.getRepresentationNode(tx);
-                    AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode);
+                    AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode, null);
                     aco.computeEnvelope(EnvelopeOptions.defaults().setEnvelopeOnFeatures(true));
                     BoundingShape boundingShape = aco.getBoundedBy();
                     if (boundingShape == null) {
@@ -329,6 +330,27 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
     }
 
     @Override
+    public BiConsumer<Node, Object> handleOriginXLink() {
+        return (node, obj) -> {
+            // Only accept nodes whose "object" has more than one incoming "object" edge
+            if (node.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                    .getRelationships(Direction.INCOMING, EdgeTypes.object)
+                    .stream().count() <= 1) return;
+            if (obj instanceof AbstractInlineOrByReferenceProperty<?> xlink) {
+                if (xlink.getObject() instanceof AbstractGML child) {
+                    xlink.setHref("#" + child.getId());
+                    xlink.setReferencedObject(null);
+                } else {
+                    logger.warn("Could not find ID of referenced XLink object {}, ignoring",
+                            xlink.getClass().getSimpleName());
+                }
+            } else {
+                logger.warn("Object {} is not an XLink, ignoring", obj.getClass().getSimpleName());
+            }
+        };
+    }
+
+    @Override
     public void exportCityGML(int partitionIndex, String exportFilePath) {
         try (Transaction tx = graphDb.beginTx()) {
             // Get the CityModel node
@@ -339,7 +361,7 @@ public class CityGMLNeo4jDBV3 extends CityGMLNeo4jDB {
                     .findFirst()
                     .get();
 
-            CityModel cityModel = (CityModel) toObject(cityModelNode);
+            CityModel cityModel = (CityModel) toObject(cityModelNode, handleOriginXLink());
 
             CityGMLContext context = CityGMLContext.newInstance();
             CityGMLVersion version = CityGMLVersion.v3_0;

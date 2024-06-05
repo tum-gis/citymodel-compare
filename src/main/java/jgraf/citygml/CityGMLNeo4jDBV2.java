@@ -60,10 +60,10 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -202,7 +202,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         batch.forEach(graphRef -> {
                             // Calculate bounding shape
                             Node topLevelNode = graphRef.getRepresentationNode(tx);
-                            AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode);
+                            AbstractCityObject aco = (AbstractCityObject) toObject(topLevelNode, null);
                             BoundingShape boundingShape = aco.calcBoundedBy(BoundingBoxOptions.defaults().assignResultToFeatures(true));
                             if (boundingShape == null) {
                                 logger.warn("Bounding shape not found for top-level feature {}, ignoring", aco.getClass().getName());
@@ -386,7 +386,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             // Height
             Length leftHeight;
             if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.height)) {
-                leftHeight = (Length) toObject(leftTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode());
+                leftHeight = (Length) toObject(leftTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode(), null);
             } else {
                 leftHeight = null;
             }
@@ -394,7 +394,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             // Names
             String leftNameStrings;
             if (leftTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.name)) {
-                ChildList<Code> ns = (ChildList<Code>) toObject(leftTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode());
+                ChildList<Code> ns = (ChildList<Code>) toObject(leftTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode(), null);
                 List<String> leftNames = new ArrayList<>(ns.stream().map(Code::getValue).toList());
                 Collections.sort(leftNames);
                 leftNameStrings = String.join(",", leftNames);
@@ -437,7 +437,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 // Height
                 Length rightHeight = null;
                 if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.height)) {
-                    rightHeight = (Length) toObject(rightTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode());
+                    rightHeight = (Length) toObject(rightTLNode.getSingleRelationship(EdgeTypes.height, Direction.OUTGOING).getEndNode(), null);
                 }
                 if (leftHeight != null && rightHeight != null) {
                     Double diff = compareMeasurements(leftHeight, rightHeight);
@@ -449,7 +449,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 // Names
                 String rightNameStrings = null;
                 if (rightTLNode.hasRelationship(Direction.OUTGOING, EdgeTypes.name)) {
-                    ChildList<Code> ns = (ChildList<Code>) toObject(rightTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode());
+                    ChildList<Code> ns = (ChildList<Code>) toObject(rightTLNode.getSingleRelationship(EdgeTypes.name, Direction.OUTGOING).getEndNode(), null);
                     List<String> rightNames = new ArrayList<>(ns.stream().map(Code::getValue).toList());
                     Collections.sort(rightNames);
                     rightNameStrings = String.join(",", rightNames);
@@ -849,12 +849,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
         // Implicit geometries
         if (leftRelNode.hasLabel(Label.label(ImplicitRepresentationProperty.class.getName()))) {
-            ImplicitRepresentationProperty leftIRP = (ImplicitRepresentationProperty) toObject(leftRelNode);
+            ImplicitRepresentationProperty leftIRP = (ImplicitRepresentationProperty) toObject(leftRelNode, null);
             String leftId = leftIRP.getImplicitGeometry().getRelativeGMLGeometry().getGeometry().getId();
 
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
-                ImplicitRepresentationProperty rightIRP = (ImplicitRepresentationProperty) toObject(rightRelNode);
+                ImplicitRepresentationProperty rightIRP = (ImplicitRepresentationProperty) toObject(rightRelNode, null);
                 String rightId = leftIRP.getImplicitGeometry().getRelativeGMLGeometry().getGeometry().getId();
 
                 // Implicit geometries are defined once and referenced using IDs -> match IDs
@@ -878,7 +878,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
 
         // MultiCurves that contain LineStrings
         if (leftRelNode.hasLabel(Label.label(MultiCurve.class.getName()))) {
-            MultiCurve leftMultiCurve = (MultiCurve) toObject(leftRelNode);
+            MultiCurve leftMultiCurve = (MultiCurve) toObject(leftRelNode, null);
             double[] tmpLeftBbox = multiCurveBBox(leftMultiCurve);
             if (tmpLeftBbox == null) {
                 GraphUtils.markGeomInvalid(tx, leftRelNode);
@@ -907,7 +907,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             for (Relationship rightRel : rightNode.getRelationships(Direction.OUTGOING, leftRel.getType())) {
                 Node rightRelNode = rightRel.getEndNode();
                 if (!GraphUtils.isGeomValid(rightRelNode)) continue;
-                MultiCurve rightMultiCurve = (MultiCurve) toObject(rightRelNode);
+                MultiCurve rightMultiCurve = (MultiCurve) toObject(rightRelNode, null);
                 double[] tmpRightBbox = multiCurveBBox(rightMultiCurve);
                 if (tmpRightBbox == null) {
                     GraphUtils.markGeomInvalid(tx, rightRelNode);
@@ -991,10 +991,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             List<Double> leftPos;
             if (leftRelNode.hasLabel(Label.label(PointProperty.class.getName()))) {
                 leftIsPP = true;
-                leftPos = ((PointProperty) toObject(leftRelNode)).getPoint().toList3d();
+                leftPos = ((PointProperty) toObject(leftRelNode, null)).getPoint().toList3d();
             } else {
                 leftIsPP = false;
-                leftPos = ((CoordinateListProvider) toObject(leftRelNode)).toList3d();
+                leftPos = ((CoordinateListProvider) toObject(leftRelNode, null)).toList3d();
             }
 
             AtomicReference<Node> candidateRef = new AtomicReference<>();
@@ -1007,10 +1007,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         List<Double> rightPos;
                         if (rightRelNode.hasLabel(Label.label(PointProperty.class.getName()))) {
                             if (!leftIsPP) return;
-                            rightPos = ((PointProperty) toObject(rightRelNode)).getPoint().toList3d();
+                            rightPos = ((PointProperty) toObject(rightRelNode, null)).getPoint().toList3d();
                         } else {
                             if (leftIsPP) return;
-                            rightPos = ((CoordinateListProvider) toObject(rightRelNode)).toList3d();
+                            rightPos = ((CoordinateListProvider) toObject(rightRelNode, null)).toList3d();
                         }
                         double distance = 0;
                         for (int i = 0; i < leftPos.size(); i++) {
@@ -1057,10 +1057,10 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     .filter(endNode -> endNode.hasLabel(Label.label(genClassLabel)))
                     .toList();
             // Compare objects
-            AbstractGenericAttribute leftObj = (AbstractGenericAttribute) toObject(leftRelNode);
+            AbstractGenericAttribute leftObj = (AbstractGenericAttribute) toObject(leftRelNode, null);
             List<Node> filteredCandidates = candidates.stream()
                     .filter(rightRelNode -> {
-                        AbstractGenericAttribute rightObj = (AbstractGenericAttribute) toObject(rightRelNode);
+                        AbstractGenericAttribute rightObj = (AbstractGenericAttribute) toObject(rightRelNode, null);
                         if (leftObj instanceof IntAttribute leftGen) {
                             IntAttribute rightGen = (IntAttribute) rightObj;
                             return leftGen.getName().equals(rightGen.getName())
@@ -1106,7 +1106,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             // Found no exact match -> proceed to find generic attributes of the same name
             List<Node> filteredNamedCandidates = candidates.stream()
                     .filter(rightRelNode -> {
-                        AbstractGenericAttribute rightObj = (AbstractGenericAttribute) toObject(rightRelNode);
+                        AbstractGenericAttribute rightObj = (AbstractGenericAttribute) toObject(rightRelNode, null);
                         return leftObj.isSetName() && rightObj.isSetName()
                                 && leftObj.getName().equals(rightObj.getName());
                     })
@@ -1124,7 +1124,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         if (leftRelNode.hasLabel(Label.label(Measure.class.getName()))
                 || leftRelNode.hasLabel(Label.label(Length.class.getName()))) {
             // Length is a subclass of Measure without new specialized properties
-            Measure leftMeasure = (Measure) toObject(leftRelNode);
+            Measure leftMeasure = (Measure) toObject(leftRelNode, null);
             AtomicInteger count = new AtomicInteger();
             List<Node> candidates = rightNode.getRelationships(Direction.OUTGOING, leftRel.getType()).stream()
                     .map(Relationship::getEndNode)
@@ -1132,7 +1132,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                         count.getAndIncrement();
                         if (!rightRelNode.hasLabel(Label.label(Measure.class.getName()))
                                 && !rightRelNode.hasLabel(Label.label(Length.class.getName()))) return false;
-                        Measure rightMeasure = (Measure) toObject(rightRelNode);
+                        Measure rightMeasure = (Measure) toObject(rightRelNode, null);
                         Double diff = compareMeasurements(leftMeasure, rightMeasure);
                         return diff != null && diff == 0;
                     })
@@ -1560,7 +1560,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
         Class<?> surfaceType;
         int highestLOD;
         if (ClazzUtils.isInstanceOf(node, BoundarySurfaceProperty.class)) {
-            BoundarySurfaceProperty bsp = (BoundarySurfaceProperty) toObject(node);
+            BoundarySurfaceProperty bsp = (BoundarySurfaceProperty) toObject(node, null);
             AbstractBoundarySurface bs = bsp.getBoundarySurface();
             surfaceType = bs.getClass();
             if (bs.isSetLod4MultiSurface()) {
@@ -1577,7 +1577,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 return null;
             }
         } else if (ClazzUtils.isInstanceOf(node, org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty.class)) {
-            org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty) toObject(node);
+            org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.bridge.BoundarySurfaceProperty) toObject(node, null);
             org.citygml4j.model.citygml.bridge.AbstractBoundarySurface bs = bsp.getBoundarySurface();
             surfaceType = bs.getClass();
             if (bs.isSetLod4MultiSurface()) {
@@ -1594,7 +1594,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                 return null;
             }
         } else if (ClazzUtils.isInstanceOf(node, org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty.class)) {
-            org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty) toObject(node);
+            org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty bsp = (org.citygml4j.model.citygml.tunnel.BoundarySurfaceProperty) toObject(node, null);
             org.citygml4j.model.citygml.tunnel.AbstractBoundarySurface bs = bsp.getBoundarySurface();
             surfaceType = bs.getClass();
             if (bs.isSetLod4MultiSurface()) {
@@ -2213,6 +2213,27 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
     }
 
     @Override
+    public BiConsumer<Node, Object> handleOriginXLink() {
+        return (node, obj) -> {
+            // Only accept nodes whose "object" has more than one incoming "object" edge
+            if (node.getSingleRelationship(EdgeTypes.object, Direction.OUTGOING).getEndNode()
+                    .getRelationships(Direction.INCOMING, EdgeTypes.object)
+                    .stream().count() <= 1) return;
+            if (obj instanceof AssociationByRepOrRef<?> xlink) {
+                if (xlink.getObject() instanceof AbstractGML child) {
+                    xlink.setHref("#" + child.getId());
+                    xlink.unsetObject();
+                } else {
+                    logger.warn("Could not find ID of referenced XLink object {}, ignoring",
+                            xlink.getClass().getSimpleName());
+                }
+            } else {
+                logger.warn("Object {} is not an XLink, ignoring", obj.getClass().getSimpleName());
+            }
+        };
+    }
+
+    @Override
     public void exportCityGML(int partitionIndex, String exportFilePath) {
         try (Transaction tx = graphDb.beginTx()) {
             // Get the CityModel node
@@ -2233,12 +2254,12 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
             FeatureWriteMode writeMode = FeatureWriteMode.NO_SPLIT; // SPLIT_PER_COLLECTION_MEMBER;
 
             // set to true and check the differences
-            boolean splitOnCopy = false;
+            boolean splitOnCopy = true;
 
             out.setModuleContext(moduleContext);
-            // out.setGMLIdManager(DefaultGMLIdManager.getInstance());
-            // out.setProperty(CityGMLOutputFactory.FEATURE_WRITE_MODE, writeMode);
-            // out.setProperty(CityGMLOutputFactory.SPLIT_COPY, splitOnCopy);
+            out.setGMLIdManager(DefaultGMLIdManager.getInstance());
+            out.setProperty(CityGMLOutputFactory.FEATURE_WRITE_MODE, writeMode);
+            out.setProperty(CityGMLOutputFactory.SPLIT_COPY, splitOnCopy);
 
             //out.setProperty(CityGMLOutputFactory.EXCLUDE_FROM_SPLITTING, ADEComponent.class);
 
@@ -2251,7 +2272,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     "Split mode: " + writeMode,
                     "Split on copy: " + splitOnCopy);
 
-            CityModel cityModel = (CityModel) toObject(cityModelNode);
+            CityModel cityModel = (CityModel) toObject(cityModelNode, handleOriginXLink());
             writer.write(cityModel);
             writer.close();
             logger.info("CityGML file written to {}", exportFilePath);
@@ -2299,7 +2320,7 @@ public class CityGMLNeo4jDBV2 extends CityGMLNeo4jDB {
                     "Split mode: " + writeMode,
                     "Split on copy: " + splitOnCopy);
 
-            CityModel cityModel = (CityModel) toObject(cityModelNode);
+            CityModel cityModel = (CityModel) toObject(cityModelNode, handleOriginXLink());
             writer.write(cityModel);
             writer.close();
             logger.info("CityGML file written to {}", exportFilePath);

@@ -5,10 +5,7 @@ import jgraf.core.DBStats;
 import jgraf.core.GraphDB;
 import jgraf.core.GraphRef;
 import jgraf.neo4j.diff.*;
-import jgraf.neo4j.factory.AuxEdgeTypes;
-import jgraf.neo4j.factory.AuxNodeLabels;
-import jgraf.neo4j.factory.AuxPropNames;
-import jgraf.neo4j.factory.NodeLabels;
+import jgraf.neo4j.factory.*;
 import jgraf.utils.ClazzUtils;
 import jgraf.utils.GraphUtils;
 import jgraf.utils.NumberUtils;
@@ -33,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 
 public abstract class Neo4jDB implements GraphDB {
     protected Neo4jDBConfig config;
@@ -236,11 +234,11 @@ public abstract class Neo4jDB implements GraphDB {
         return node;
     }
 
-    public Object toObject(Node node) {
+    public Object toObject(Node node, BiConsumer<Node, Object> handleOriginXLink) {
         Object object = null;
         try {
-            object = toObject(node, new HashMap<>());
-        } catch (ClassNotFoundException | NoSuchMethodException | InvocationTargetException | InstantiationException |
+            object = toObject(node, new HashMap<>(), handleOriginXLink);
+        } catch (ClassNotFoundException | InvocationTargetException | InstantiationException |
                  IllegalAccessException | NoSuchFieldException e) {
             throw new RuntimeException(e);
         }
@@ -248,7 +246,8 @@ public abstract class Neo4jDB implements GraphDB {
         return object;
     }
 
-    private Object toObject(Node graphNode, HashMap<String, Object> reverseMapped) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
+    private Object toObject(Node graphNode, HashMap<String, Object> reverseMapped, BiConsumer<Node, Object> handleOriginXLink)
+            throws ClassNotFoundException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
         if (graphNode == null) return null;
 
         // Check if this object has been mapped before, if yes return this mapped node instead of creating a new one
@@ -327,8 +326,14 @@ public abstract class Neo4jDB implements GraphDB {
                     while (it.hasNext()) {
                         Relationship rel = it.next();
                         if (rel.getType().name().equals(AuxPropNames.ARRAY_MEMBER.toString())) {
-                            Object vNode = toObject(rel.getEndNode(), reverseMapped);
+                            Object vNode = toObject(rel.getEndNode(), reverseMapped, handleOriginXLink);
                             if (vNode == null) continue;
+                            if (rel.getEndNode().hasProperty(PropNames.href.toString() + AuxPropNames.__TYPE__)) {
+                                // Was originally an XLink
+                                if (handleOriginXLink != null) {
+                                    handleOriginXLink.accept(rel.getEndNode(), vNode);
+                                }
+                            }
                             int index = Integer.parseInt(rel.getProperty(AuxPropNames.ARRAY_INDEX.toString()).toString());
                             Array.set(object, index, componentType.cast(vNode));
                         }
@@ -384,8 +389,14 @@ public abstract class Neo4jDB implements GraphDB {
                         // Complex values stored using edges // TODO Multiple edges of same name?
                         Relationship rel = graphNode.getSingleRelationship(
                                 RelationshipType.withName(fieldName), Direction.OUTGOING);
-                        fieldValue = toObject(rel.getEndNode(), reverseMapped);
+                        fieldValue = toObject(rel.getEndNode(), reverseMapped, handleOriginXLink);
                         if (fieldValue == null) continue;
+                        if (rel.getEndNode().hasProperty(PropNames.href.toString() + AuxPropNames.__TYPE__)) {
+                            // Was originally an XLink
+                            if (handleOriginXLink != null) {
+                                handleOriginXLink.accept(rel.getEndNode(), fieldValue);
+                            }
+                        }
                     }
                     try {
                         field.set(object, fieldValue);

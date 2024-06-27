@@ -48,4 +48,17 @@ summarized as follows:
   2.0 and 3.0) using Gradle,
   see [`0a23164`](https://github.com/tum-gis/citymodel-compare/commit/0a23164f60502adf1359cb04f61787b346b31f54).
 
+* **Mapping (without Matching)**: It is now possible to map only one CityGML dataset without matching or interpreting,
+  see [`6a7fcd3`](https://github.com/tum-gis/citymodel-compare/commit/6a7fcd3865c3ac55069ea5050a1bffcc482259dc).
+  This is useful for creating a graph representation of a single city model as a basis for further graph-based analysis.
+  Simply add a single path in the config file:
+   ```
+   # Config file
+   
+   # Add a single path for mapping only
+   mapper.dataset.paths = [
+    "path/to/dataset.gml"
+   ]
+   ``` 
+
 ### v1.0.0 - Released

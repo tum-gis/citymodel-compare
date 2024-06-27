@@ -68,8 +68,31 @@ The following code-snippets are based on Ubuntu OS.
 ### Install Apache
 
 ```bash
+# Install
 sudo apt update
 sudo apt install apache2
+# sudo service apache2 start
+
+# Automatically start apache on reboot
+sudo systemctl enable apache2
+```
+
+### Configure ServerName
+
+```bash
+# Create a conf file
+sudo vim /etc/apache2/conf-available/servername.conf
+
+# Add this line to the file
+ServerName your.domain.com
+
+# Add config to apache2
+sudo a2enconf servername
+sudo systemctl reload apache2
+sudo service apache2 restart
+
+# Check logs
+sudo vim /var/log/apache2/error.log
 ```
 
 ### Configure Firewall
@@ -91,7 +114,9 @@ sudo iptables -A INPUT -p tcp --dport 7474 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 7473 -j ACCEPT
 
 # Show all rules
-sudo iptables -L -v -n | more
+sudo iptables -L -n
+# sudo apt install net-tools
+sudo netstat -ntlp
 ```
 
 ### Install Let's Encrypt
@@ -403,4 +428,22 @@ ps ax | grep https-server.py
 
 ```bash
 sudo neo4j restart
+```
+
+### Save and Restore Firewall Rules
+
+After restart, firewall rules will be removed. To save and restore them:
+
+```bash
+# Install package
+sudo apt install iptables-persistent
+
+# The ipv4 and ipv6 rules are stored in /etc/iptables
+# Simply adjust these files
+# These files will be applied on the next reboot
+
+# The created files are snapshot at the moment of installation
+# To update these files with current firewall rules:
+sudo iptables-save > /etc/iptables/rules.v4
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```

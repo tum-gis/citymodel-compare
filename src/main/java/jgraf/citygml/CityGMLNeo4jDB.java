@@ -368,9 +368,17 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     public boolean diff(int leftPartitionIndex, int rightPartitionIndex) {
-        if ((leftPartitionIndex < 0 || leftPartitionIndex >= config.MAPPER_DATASET_PATHS.size())
-                || (rightPartitionIndex < 0 || rightPartitionIndex >= config.MAPPER_DATASET_PATHS.size()))
+        int countValid = 0;
+        if (leftPartitionIndex >= 0 && leftPartitionIndex < config.MAPPER_DATASET_PATHS.size()) countValid++;
+        if (rightPartitionIndex >= 0 && rightPartitionIndex < config.MAPPER_DATASET_PATHS.size()
+                && leftPartitionIndex != rightPartitionIndex) countValid++;
+
+        // Do not match when only one partition is available
+        if (countValid == 1) return true;
+
+        if (countValid == 0)
             throw new RuntimeException("Invalid partition indices " + leftPartitionIndex + " and " + rightPartitionIndex);
+
         dbStats.startTimer();
 
         // Init indexing for changes
@@ -810,6 +818,9 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     }
 
     public void interpretDiff() {
+        // Do not interpret if there is only one partition
+        if (config.MAPPER_DATASET_PATHS.size() == 1) return;
+
         dbStats.startTimer();
         Patterns.createRuleNetwork(
                 graphDb,
@@ -999,8 +1010,11 @@ public abstract class CityGMLNeo4jDB extends Neo4jDB {
     public void summarize() {
         super.summarize();
 
-        // exportChangesText();
-        exportChangesCSV();
+        // Only export if there are more than one partition
+        if (config.MAPPER_DATASET_PATHS.size() != 1) {
+            // exportChangesText();
+            exportChangesCSV();
+        }
 
         if (config.NEO4J_RTREE_STORE) {
             // Store all RTree layers in the database for later use/import

@@ -408,6 +408,8 @@ browser.post_connect_cmd=play https://<server_name>:4443/tutorial
 
 ### Run Python Server
 
+The following code snippet runs the Python server for only the current session:
+
 ```bash
 # Change directory
 cd /home/user/neo4j-guides
@@ -422,6 +424,32 @@ sudo nohup python3 ./https-server.py &
 ps -ef | grep http-server.py
 ps ax | grep http-server.py
 ps ax | grep https-server.py
+```
+
+The following code snippet allows for running the Python server even after the system has been rebooted:
+
+```bash
+# Open a crontab file
+sudo crontab -e
+
+# Add the following line at the end of the file
+sudo nohup python3 /path/to/https-server.py &
+
+# To check whether the crontab file has been updated
+sudo vim /var/spool/cron/crontabs/root 
+```
+
+If the server is not listening despite already being executed:
+
+```bash
+# To find which process is listening on port 4443
+sudo lsof -i :4443
+
+# Stop that process
+sudo kill 1234
+
+# Rerun Python server again
+sudo nohup python3 /path/to/https-server.py &
 ```
 
 ### Restart Neo4j

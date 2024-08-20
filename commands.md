@@ -371,13 +371,16 @@ httpd.serve_forever()
 ### Convert images to base64 (load images directly)
 
 ```bash
-# Save the base64 code in a text file
+# Save the base64 code in a text file (png)
 echo "data:image/jpeg;base64,$(base64 -w 0 image.png)" > image.png.base64
+# Save the base64 code in a text file (svg)
+echo "data:image/svg+xml;base64,$(base64 -w 0 image.svg)" > image.svg.base64
 ```
 
 ```html
 <!-- Copy the content of the exported text file and paste into img -->
 <img src="data:image/jpeg;base64,..." .../>
+<img src="data:image/svg+xml;base64,..." .../>
 ```
 
 ### Configure firewall

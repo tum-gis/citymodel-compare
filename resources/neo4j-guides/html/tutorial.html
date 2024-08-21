@@ -1155,7 +1155,7 @@ ORDER BY weight DESC
                 <p>Each change type node at the end of the fully traced paths represents all instances of that change type. For instance, the node <code>Function Changed</code> represents all <code>140676</code> buildings with updated function values. These changes, aggregated by the interpretation process based on predefined change pattern rules, are attached directly to building nodes. Therefore, they can be retrieved using an additional Cypher query that searches for these buildings with the attached change nodes (see query below). Thus, the results delivered by this approach are always up-to-date. However, this step is highly manual and requires expert knowledge of the underlying database structure.</p>
                 <figure>
                     <pre class="pre-scrollable code runnable">// Count all buildings with updated function
-                        MATCH (b:Building:`__PARTITION_INDEX__0`)-[:function]
+MATCH (b:Building:`__PARTITION_INDEX__0`)-[:function]
     ->()-[*2]->()<-[]-(:UpdatePropChange {PROPERTY_NAME: "value"})
 RETURN count(b)
                 </figure>

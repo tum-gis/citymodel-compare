@@ -149,7 +149,11 @@ sudo certbot renew --dry-run
 cd /etc/neo4j
 sudo mkdir certificates
 cd certificates
-sudo cp /etc/letsencrypt/live/<custom_domain>/* ./
+sudo su
+cp /etc/letsencrypt/live/<custom_domain>/* ./
+# Do NOT use
+# cp -r /etc/letsencrypt/live/<custom_domain> /etc/neo4j/certificates
+# because it will copy symbolic links pointing to files that neo4j cannot read
 
 # Investigate user neo4j
 id neo4j
@@ -477,4 +481,44 @@ sudo apt install iptables-persistent
 # To update these files with current firewall rules:
 sudo iptables-save > /etc/iptables/rules.v4
 sudo ip6tables-save > /etc/iptables/rules.v6
+```
+
+### Update after Let's Encrypt Renewal
+
+Let's Encrypt certificates are valid for 90 days. After renewal, the certificates in the Neo4j directory must be
+updated:
+
+```bash
+# Copy
+cd /etc/neo4j/certificates
+sudo su
+cp /etc/letsencrypt/live/<custom_domain>/* ./certificates
+# Do NOT use
+# cp -r /etc/letsencrypt/live/<custom_domain> /etc/neo4j/certificates
+# because it will copy symbolic links pointing to files that neo4j cannot read
+
+# Investigate user neo4j
+id neo4j
+
+# Assign read/write rights to neo4j
+cd ..
+sudo chown -R neo4j:adm ./certificates
+
+# Check rights
+ls -la certificates
+
+# Restart Neo4j
+sudo neo4j restart
+```
+
+```bash
+# Restart Python server
+# To find which process is listening on port 4443
+sudo lsof -i :4443
+
+# Stop that process
+sudo kill <pid>
+
+# Rerun Python server again
+sudo nohup python3 /path/to/https-server.py &
 ```

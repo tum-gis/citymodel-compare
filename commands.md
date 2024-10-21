@@ -41,8 +41,20 @@ server.bolt.listen_address=0.0.0.0:7687
 server.http.enabled=true
 server.http.listen_address=0.0.0.0:7474
 
-# The </path/to/data> can be an existing database
-# It must contain the directories databases and transactions
+# path/to/data such as /home/user/neo4jDB/data
+#
+# Directory structure
+#
+# neo4jDB
+#   data
+#     databases
+#       neo4j
+#       system
+#       store_lock
+#     transactions
+#       neo4j
+#       system
+#       server_id
 
 # Change password in Neo4j Browser
 :server change-password
@@ -51,14 +63,29 @@ server.http.listen_address=0.0.0.0:7474
 sudo neo4j start
 
 # Allow remote access
-sudo iptables -A INPUT -p tcp --dport 7687 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 7474 -j ACCEPT
-# To delete
-# sudo iptables -D INPUT -p tcp --dport 7687 -j ACCEPT
-# sudo iptables -D INPUT -p tcp --dport 7474 -j ACCEPT
+sudo ufw allow 7687/tcp
+sudo ufw allow 7474/tcp
 
 # Stop Neo4j
 sudo neo4j stop
+```
+
+Start Neo4j on reboot:
+
+```bash
+# Find where Neo4j is
+which neo4j
+# such as /usr/bin/neo4j
+
+sudo crontab -e
+
+# Add this line at the end of the file
+@reboot /usr/bin/neo4j start
+
+# Save file
+
+# If Neo4j runs as a service
+sudo systemctl enable neo4j.service
 ```
 
 ## Publish Neo4j using SSL
@@ -98,25 +125,15 @@ sudo vim /var/log/apache2/error.log
 ### Configure Firewall
 
 ```bash
-# Apache HTTP
-sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-
-# Apache HTTPS
-sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-
-# Neo4j Bolt
-sudo iptables -A INPUT -p tcp --dport 7687 -j ACCEPT
-
-# Neo4j Browser
-sudo iptables -A INPUT -p tcp --dport 7474 -j ACCEPT
-
-# Neo4j Browser SSL
-sudo iptables -A INPUT -p tcp --dport 7473 -j ACCEPT
+# UFW rules
+sudo ufw allow 80/tcp # Apache HTTP
+sudo ufw allow 443/tcp # Apache HTTPS
+sudo ufw allow 7473/tcp # Neo4j Browser SSL
+sudo ufw allow 7474/tcp # Neo4j Browser
+sudo ufw allow 7687/tcp # Neo4j Bolt
 
 # Show all rules
-sudo iptables -L -n
-# sudo apt install net-tools
-sudo netstat -ntlp
+sudo ufw status
 ```
 
 ### Install Let's Encrypt
@@ -130,10 +147,10 @@ sudo snap install --classic certbot
 # Prepare certbot command
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
-# When asked, enter email address and <custom_domain>.
-
 # Configure apache for certbot
 sudo certbot --apache
+
+# When asked, enter email address and <custom_domain>.
 
 # Test
 sudo certbot renew --dry-run
@@ -190,13 +207,13 @@ server.https.listen_address=0.0.0.0:7473
 # Bolt SSL configuration
 dbms.ssl.policy.bolt.enabled=true
 dbms.ssl.policy.bolt.base_directory=/etc/neo4j/certificates
-dbms.ssl.policy.bolt.private_key=private_key.pem
+dbms.ssl.policy.bolt.private_key=privkey.pem
 dbms.ssl.policy.bolt.public_certificate=cert.pem
 
 # HTTPS SSL configuration
 dbms.ssl.policy.https.enabled=true
 dbms.ssl.policy.https.base_directory=/etc/neo4j/certificates
-dbms.ssl.policy.https.private_key=private_key.pem
+dbms.ssl.policy.https.private_key=privkey.pem
 dbms.ssl.policy.https.public_certificate=cert.pem
 
 # The certificate and private key can be different between Bolt SSL and HTTPS SSL.
@@ -213,8 +230,20 @@ sudo vim /etc/neo4j/neo4j.conf
 # Make the DB readonly
 dbms.databases.default_to_read_only=true
 
-# Change password
-sudo neo4j-admin set-initial-password <password>
+# Change password for new Neo4j installation
+sudo neo4j-admin dbms set-initial-password <password>
+
+# For existing Neo4j installation
+# Disable authentication in neo4j.conf
+dbms.security.auth_enabled=false
+# Restart Neo4j
+sudo neo4j restart
+# Change password in Neo4j Browser
+ALTER USER neo4j SET PLAINTEXT PASSWORD '<password>'
+# Enable authentication in neo4j.conf
+dbms.security.auth_enabled=true
+# Restart Neo4j
+sudo neo4j restart
 ```
 
 ### Restart Neo4j
@@ -391,10 +420,10 @@ echo "data:image/svg+xml;base64,$(base64 -w 0 image.svg)" > image.svg.base64
 
 ```bash
 # HTTP Python Server
-sudo iptables -A INPUT -p tcp --dport 8001 -j ACCEPT
+sudo ufw allow 8001/tcp
 
 # HTTPS Python Server
-sudo iptables -A INPUT -p tcp --dport 4443 -j ACCEPT
+sudo ufw allow 4443/tcp
 ```
 
 ### Configure Neo4j
@@ -422,10 +451,10 @@ The following code snippet runs the Python server for only the current session:
 cd /home/user/neo4j-guides
 
 # Run the server in the background (HTTP)
-sudo nohup python3 ./http-server.py &
+sudo nohup python3 ./http-server.py > /dev/null 2>&1 &
 
 # Run the server in the background (HTTPS)
-sudo nohup python3 ./https-server.py &
+sudo nohup python3 ./https-server.py > /dev/null 2>&1 &
 
 # List all running servers
 ps -ef | grep http-server.py
@@ -440,10 +469,11 @@ The following code snippet allows for running the Python server even after the s
 sudo crontab -e
 
 # Add the following line at the end of the file
-sudo nohup python3 /path/to/https-server.py &
+@reboot cd /home/user/neo4j-guides && sudo nohup python3 ./https-server.py > /dev/null 2>&1 &
 
 # To check whether the crontab file has been updated
 sudo vim /var/spool/cron/crontabs/root 
+sudo crontab -l
 ```
 
 If the server is not listening despite already being executed:
@@ -456,7 +486,7 @@ sudo lsof -i :4443
 sudo kill 1234
 
 # Rerun Python server again
-sudo nohup python3 /path/to/https-server.py &
+sudo nohup python3 /path/to/https-server.py > /dev/null 2>&1 &
 ```
 
 ### Restart Neo4j

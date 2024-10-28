@@ -486,7 +486,8 @@ sudo lsof -i :4443
 sudo kill 1234
 
 # Rerun Python server again
-sudo nohup python3 /path/to/https-server.py > /dev/null 2>&1 &
+cd /home/user/neo4j-guides
+sudo nohup python3 ./https-server.py > /dev/null 2>&1 &
 ```
 
 ### Restart Neo4j

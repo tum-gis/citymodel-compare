@@ -523,7 +523,7 @@ updated:
 # Copy
 cd /etc/neo4j/certificates
 sudo su
-cp /etc/letsencrypt/live/<custom_domain>/* ./certificates
+cp /etc/letsencrypt/live/<custom_domain>/* ./
 # Do NOT use
 # cp -r /etc/letsencrypt/live/<custom_domain> /etc/neo4j/certificates
 # because it will copy symbolic links pointing to files that neo4j cannot read
@@ -551,5 +551,6 @@ sudo lsof -i :4443
 sudo kill <pid>
 
 # Rerun Python server again
-sudo nohup python3 /path/to/https-server.py &
+cd /home/user/neo4j-guides
+sudo nohup python3 ./https-server.py > /dev/null 2>&1 &
 ```

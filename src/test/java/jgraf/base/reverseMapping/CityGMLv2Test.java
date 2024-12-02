@@ -50,7 +50,7 @@ public class CityGMLv2Test {
                 cityModelNodes.add(rel.getEndNode());
             });
             for (Node cityModelNode : cityModelNodes) {
-                Object cityModel = cityGMLNeo4jDB.toObject(cityModelNode);
+                Object cityModel = cityGMLNeo4jDB.toObject(cityModelNode, null);
                 assertTrue(cityModel instanceof CityModel);
                 List<CityObjectMember> cityObjectMembers = ((CityModel) cityModel).getCityObjectMember();
                 assertEquals(cityObjectMembers.size(), 1);

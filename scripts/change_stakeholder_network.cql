@@ -1,0 +1,119 @@
+// Construct Change-Stakeholder Network (CSN)
+
+// Change Type Layer (L1)
+MERGE (identifier_changed:CHANGE_TYPE:CSN {
+  name: 'Identifier Changed', weight: 0.4})
+MERGE (date_changed:CHANGE_TYPE:CSN {
+  name: 'Date Changed', weight: 0.6})
+MERGE (building_unchanged:CHANGE_TYPE:CSN {
+  name: 'Building Unchanged', weight: 0.8})
+MERGE (function_changed:CHANGE_TYPE:CSN {
+  name: 'Function Changed', weight: 0.7})
+MERGE (roof_raised:CHANGE_TYPE:CSN {
+  name: 'Roof Raised', weight: 0.9})
+
+// Reasoning Layer (L2)
+MERGE (batch_update:REASONING:CSN {
+  name: 'Batch Update', weight: 0.4})
+MERGE (data_improvement:REASONING:CSN {
+  name: 'Data Improvement', weight: 0.5})
+MERGE (historic_preservation:REASONING:CSN {
+  name: 'Historic Preservation', weight: 0.7})
+MERGE (building_repurpose:REASONING:CSN {
+  name: 'Building Repurpose', weight: 0.9})
+MERGE (building_renovation:REASONING:CSN {
+  name: 'Building Renovation', weight: 0.8})
+MERGE (floor_addition:REASONING:CSN {
+  name: 'Floor Addition', weight: 0.8})
+
+// Actor Role Layer (L3)
+MERGE (data_broker:ACTOR_ROLE:CSN {
+  name: 'Data Broker', weight: 0.7})
+MERGE (city_model_manager:ACTOR_ROLE:CSN {
+  name: 'City Model Manager', weight: 0.8})
+MERGE (urban_planner:ACTOR_ROLE:CSN {
+  name: 'Urban Planner', weight: 0.6})
+MERGE (city_mayor:ACTOR_ROLE:CSN {
+  name: 'City Mayor', weight: 0.9})
+MERGE (real_estate_appraiser:ACTOR_ROLE:CSN {
+  name: 'Real Estate Appraiser', weight: 0.4})
+MERGE (fire_safety_officer:ACTOR_ROLE:CSN {
+  name: 'Fire Safety Officer', weight: 0.5})
+
+// Stakeholder Layer (L4)
+MERGE (technology_company:STAKEHOLDER:CSN {
+  name: 'Technology Company', weight: 0.7})
+MERGE (mapping_agency:STAKEHOLDER:CSN {
+  name: 'Mapping Agency', weight: 0.8})
+MERGE (city_planning_department:STAKEHOLDER:CSN {
+  name: 'City Planning Department', weight: 0.9})
+MERGE (real_estate_company:STAKEHOLDER:CSN {
+  name: 'Real Estate Company', weight: 0.6})
+MERGE (fire_and_rescue_department:STAKEHOLDER:CSN {
+  name: 'Fire and Rescue Department', weight: 0.5})
+
+// Relationships from L4 to L3
+MERGE (technology_company)-[:BACKWARD {
+  weight: 0.7}]->(data_broker)
+MERGE (mapping_agency)-[:BACKWARD {
+  weight: 0.8}]->(city_model_manager)
+MERGE (city_planning_department)-[:BACKWARD {
+  weight: 0.7}]->(urban_planner)
+MERGE (city_planning_department)-[:BACKWARD {
+  weight: 0.9}]->(city_mayor)
+MERGE (real_estate_company)-[:BACKWARD {
+  weight: 0.9}]->(real_estate_appraiser)
+MERGE (fire_and_rescue_department)-[:BACKWARD {
+  weight: 0.6}]->(fire_safety_officer)
+
+// Relationships from L3 to L2
+MERGE (data_broker)-[:BACKWARD {
+  weight: 0.5}]->(batch_update)
+MERGE (data_broker)-[:BACKWARD {
+  weight: 0.7}]->(data_improvement)
+MERGE (city_model_manager)-[:BACKWARD {
+  weight: 0.6}]->(data_improvement)
+MERGE (urban_planner)-[:BACKWARD {
+  weight: 0.8}]->(historic_preservation)
+MERGE (city_mayor)-[:BACKWARD {
+  weight: 0.8}]->(historic_preservation)
+MERGE (city_mayor)-[:BACKWARD {
+  weight: 0.9}]->(building_repurpose)
+MERGE (city_mayor)-[:BACKWARD {
+  weight: 0.6}]->(building_renovation)
+MERGE (city_mayor)-[:BACKWARD {
+  weight: 0.7}]->(floor_addition)
+MERGE (real_estate_appraiser)-[:BACKWARD {
+  weight: 0.2}]->(historic_preservation)
+MERGE (real_estate_appraiser)-[:BACKWARD {
+  weight: 0.4}]->(building_repurpose)
+MERGE (real_estate_appraiser)-[:BACKWARD {
+  weight: 0.8}]->(building_renovation)
+MERGE (real_estate_appraiser)-[:BACKWARD {
+  weight: 0.6}]->(floor_addition)
+MERGE (fire_safety_officer)-[:BACKWARD {
+  weight: 0.9}]->(building_renovation)
+MERGE (fire_safety_officer)-[:BACKWARD {
+  weight: 0.7}]->(floor_addition)
+
+// Relationships from L2 to L1
+MERGE (batch_update)-[:BACKWARD {
+  weight: 0.6}]->(identifier_changed)
+MERGE (batch_update)-[:BACKWARD {
+  weight: 0.9}]->(date_changed)
+MERGE (data_improvement)-[:BACKWARD {
+  weight: 0.2}]->(identifier_changed)
+MERGE (data_improvement)-[:BACKWARD {
+  weight: 0.4}]->(date_changed)
+MERGE (historic_preservation)-[:BACKWARD {
+  weight: 1.0}]->(building_unchanged)
+MERGE (building_repurpose)-[:BACKWARD {
+  weight: 1.0}]->(function_changed)
+MERGE (building_renovation)-[:BACKWARD {
+  weight: 0.3}]->(building_unchanged)
+MERGE (building_renovation)-[:BACKWARD {
+  weight: 0.6}]->(function_changed)
+MERGE (building_renovation)-[:BACKWARD {
+  weight: 0.8}]->(roof_raised)
+MERGE (floor_addition)-[:BACKWARD {
+  weight: 0.8}]->(roof_raised)

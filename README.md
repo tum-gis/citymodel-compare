@@ -46,13 +46,13 @@ What is needed:
 2. Pull the following image from Docker Hub:
 
    ```shell
-   docker pull sonnguyentum/citymodel-compare:1.0.0
+   docker pull tumgis/citymodel-compare:1.0.0
    ```
    
    To use latest (experimental) functionalities, pull the following image instead:
 
    ```shell
-    docker pull sonnguyentum/citymodel-compare:1.0.0-dev
+    docker pull tumgis/citymodel-compare:1.0.0-dev
     ```
 
 3. Run the image:
@@ -62,14 +62,14 @@ What is needed:
    docker run \
       -it --rm \
       -p 7474:7474 -p 7687:7687 \
-   sonnguyentum/citymodel-compare:1.0.0
+   tumgis/citymodel-compare:1.0.0-dev
    ```
    ```shell
    # Windows
     docker run ^
        -it --rm ^
        -p 7474:7474 -p 7687:7687 ^
-    sonnguyentum/citymodel-compare:1.0.0
+    tumgis/citymodel-compare:1.0.0-dev
    ```
 
    This will start a Neo4j instance with all necessary dependencies installed. The parameters are as follows:
@@ -330,7 +330,7 @@ The following steps are required to use your own datasets:
 5. Pull the following image from Docker Hub:
 
    ```shell
-   docker pull sonnguyentum/citymodel-compare:1.0.0
+   docker pull tumgis/citymodel-compare:1.0.0-dev
    ```
 
 6. Run the Docker container with bind mounts (make sure you are in the cloned `citymodel-compare` directory):
@@ -344,7 +344,7 @@ The following steps are required to use your own datasets:
         -v "/path/to/input:/home/gradle/src/citymodel-compare/input" \
         -v "/path/to/output:/home/gradle/src/citymodel-compare/output" \
         -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" \
-    sonnguyentum/citymodel-compare:1.0.0
+    tumgis/citymodel-compare:1.0.0-dev
     ```
 
     ```shell
@@ -356,7 +356,7 @@ The following steps are required to use your own datasets:
         -v "/path/to/input:/home/gradle/src/citymodel-compare/input" ^
         -v "/path/to/output:/home/gradle/src/citymodel-compare/output" ^
         -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" ^
-    sonnguyentum/citymodel-compare:1.0.0
+    tumgis/citymodel-compare:1.0.0-dev
     ```
 
    The parameters are as follows:
@@ -396,7 +396,7 @@ The following steps are required to define your own pattern rules:
 4. Pull the following image from Docker Hub:
 
    ```shell
-   docker pull sonnguyentum/citymodel-compare:1.0.0
+   docker pull tumgis/citymodel-compare:1.0.0-dev
    ```
 
 5. Run the Docker container with bind mounts (make sure you are in the cloned `citymodel-compare` directory):
@@ -410,7 +410,7 @@ The following steps are required to define your own pattern rules:
         -v "/path/to/input:/home/gradle/src/citymodel-compare/input" \
         -v "/path/to/output:/home/gradle/src/citymodel-compare/output" \
         -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" \
-    sonnguyentum/citymodel-compare:1.0.0
+    tumgis/citymodel-compare:1.0.0-dev
     ```
 
     ```shell
@@ -422,7 +422,7 @@ The following steps are required to define your own pattern rules:
         -v "/path/to/input:/home/gradle/src/citymodel-compare/input" ^
         -v "/path/to/output:/home/gradle/src/citymodel-compare/output" ^
         -v "/path/to/scripts:/home/gradle/src/citymodel-compare/scripts" ^
-    sonnguyentum/citymodel-compare:1.0.0
+    tumgis/citymodel-compare:1.0.0-dev
     ```
 
    The parameters are as follows:

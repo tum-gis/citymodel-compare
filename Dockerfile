@@ -14,5 +14,12 @@ RUN git clone https://github.com/tum-gis/citymodel-compare
 # Set the working directory
 WORKDIR /home/gradle/src/citymodel-compare
 
+# Cache Gradle dependencies
+RUN gradle dependencies --no-daemon || true
+
+# Build the application
+COPY gradlew gradle/ /home/gradle/src/citymodel-compare/
+RUN ./gradlew build --no-daemon -x test
+
 # Run the application using Gradle
 CMD ["gradle", "run"]

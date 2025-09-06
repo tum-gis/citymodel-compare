@@ -1,5 +1,5 @@
 # Use the official gradle image as a base image
-FROM gradle:jdk17 AS build
+FROM gradle:9.0.0-jdk17 AS build
 
 # Allow access
 EXPOSE 7474

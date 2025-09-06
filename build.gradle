@@ -83,11 +83,13 @@ dependencies {
     implementation 'org.openjdk.nashorn:nashorn-core:15.4'
 
     // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
-    implementation 'ch.qos.logback:logback-classic:1.4.5'
+    implementation 'ch.qos.logback:logback-classic:1.5.12'
 
     // Use JUnit Jupiter for testing.
     // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api
     testImplementation "org.junit.jupiter:junit-jupiter-api:5.13.4"
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.13.4"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher:1.13.4"
 }
 
 //configurations.all {

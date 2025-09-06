@@ -489,6 +489,9 @@ The following features will be added soon:
 
 This tool is part of the following publications:
 
+**Nguyen, Son H.**: [_Automatic Detection and Interpretation of Changes in Massive Semantic 3D City Models_](https://mediatum.ub.tum.de/?id=1748695).
+Dissertation, Technical University of Munich, 2024.
+
 **Nguyen, Son H.; Kolbe, Thomas H.**: [_Identification and Interpretation of Change Patterns in 
 Semantic 3D City Models_](https://mediatum.ub.tum.de/doc/1730733/1730733.pdf). Lecture Notes in Geoinformation and Cartography - Recent Advances in 3D Geoinformation Science - 
 Proceedings of the 18th 3D GeoInfo Conference, Springer, 2023.
@@ -523,7 +526,7 @@ GeoInfo Conference 2017 (ISPRS Annals of the Photogrammetry, Remote Sensing and 
 2017, 99-106.
 
 **Nguyen, Son H.**: [_Spatio-semantic Comparison of 3D City Models in CityGML using a Graph
-Database_](https://mediatum.ub.tum.de/doc/1374646/1374646.pdf). Master thesis, 2017.
+Database_](https://mediatum.ub.tum.de/doc/1374646/1374646.pdf). Master's thesis, Technical University of Munich, 2017.
 
 ## License
 

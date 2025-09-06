@@ -1,16 +1,34 @@
 plugins {
     id 'application'
     id 'java-library'
-    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    // id 'com.gradleup.shadow' version '9.1.0'
+}
+
+group = "org.tum-gis"
+version = "1.0.0"
+
+tasks.named("jar") {
+    archiveBaseName.set("citymodel-compare")
+    manifest {
+        attributes(
+                'Main-Class': 'jgraf.app.CityAnalysisApp'
+        )
+    }
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 repositories {
     maven {
-        url "https://repo.maven.apache.org/maven2"
-        artifactUrls "https://repo.osgeo.org/repository/release"
+        url = uri("https://repo.maven.apache.org/maven2")
+        artifactUrls = [uri("https://repo.osgeo.org/repository/release")]
     }
     maven {
-        url "https://repo.osgeo.org/repository/release"
+        url = uri("https://repo.osgeo.org/repository/release")
     }
     mavenCentral()
 }
@@ -49,9 +67,6 @@ dependencies {
     // https://mvnrepository.com/artifact/org.neo4j/neo4j-bolt
     implementation 'org.neo4j:neo4j-bolt:5.15.0'
 
-    // Use JUnit Jupiter for testing.
-    implementation 'org.junit.jupiter:junit-jupiter:5.8.2'
-
     // https://mvnrepository.com/artifact/org.citygml4j/citygml4j-core
     implementation 'org.citygml4j:citygml4j-core:3.0.0'
 
@@ -69,6 +84,10 @@ dependencies {
 
     // https://mvnrepository.com/artifact/ch.qos.logback/logback-classic
     implementation 'ch.qos.logback:logback-classic:1.4.5'
+
+    // Use JUnit Jupiter for testing.
+    // https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api
+    testImplementation "org.junit.jupiter:junit-jupiter-api:5.13.4"
 }
 
 //configurations.all {
@@ -79,9 +98,30 @@ configurations.all {
     exclude group: 'org.neo4j', module: 'neo4j-slf4j-provider'
 }
 
-run {
-    mainClass = 'jgraf.app.CityAnalysisApp'
+application {
+    mainClass.set("jgraf.app.CityAnalysisApp")
     applicationDefaultJvmArgs = [
+            '-Xms16g', '-Xmx50g',
+            '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
+             '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.io=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.time=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.util=ALL-UNNAMED',
+            '--add-opens', 'java.base/java.util.concurrent=ALL-UNNAMED',
+            '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
+            '--add-opens', 'java.base/jdk.internal.ref=ALL-UNNAMED',
+            '--add-opens', 'java.base/sun.net.www.protocol.http=ALL-UNNAMED',
+            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
+            '-Dlogback.configurationFile=config/logback.xml'
+    ]
+}
+
+tasks.register('exportCityGMLV2', JavaExec) {
+    mainClass = 'jgraf.app.CityGMLExporterV2'
+    classpath = sourceSets.main.runtimeClasspath
+    jvmArgs = [
             '-Xms16g', '-Xmx50g',
             '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
@@ -94,15 +134,16 @@ run {
             '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
             '--add-opens', 'java.base/jdk.internal.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/sun.net.www.protocol.http=ALL-UNNAMED',
-            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED'
+            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
+            '-Dlogback.configurationFile=config/logback.xml'
     ]
-    systemProperty 'logback.configurationFile', 'config/logback.xml'
 }
 
-task exportCityGMLV2(type: JavaExec) {
-    mainClass.set('jgraf.app.CityGMLExporterV2')
+tasks.register('exportCityGMLV3', JavaExec) {
+    mainClass = 'jgraf.app.CityGMLExporterV3'
     classpath = sourceSets.main.runtimeClasspath
     jvmArgs = [
+            '-Xms16g', '-Xmx50g',
             '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
@@ -114,37 +155,15 @@ task exportCityGMLV2(type: JavaExec) {
             '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
             '--add-opens', 'java.base/jdk.internal.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/sun.net.www.protocol.http=ALL-UNNAMED',
-            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED'
+            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
+            '-Dlogback.configurationFile=config/logback.xml'
     ]
-    systemProperty 'logback.configurationFile', 'config/logback.xml'
 }
 
-task exportCityGMLV3(type: JavaExec) {
-    mainClass.set('jgraf.app.CityGMLExporterV3')
-    classpath = sourceSets.main.runtimeClasspath
-    jvmArgs = [
-            '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.io=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.time=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.util=ALL-UNNAMED',
-            '--add-opens', 'java.base/java.util.concurrent=ALL-UNNAMED',
-            '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
-            '--add-opens', 'java.base/jdk.internal.ref=ALL-UNNAMED',
-            '--add-opens', 'java.base/sun.net.www.protocol.http=ALL-UNNAMED',
-            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED'
-    ]
-    systemProperty 'logback.configurationFile', 'config/logback.xml'
-}
-
-tasks.named('test') {
-    // Use JUnit Platform for unit tests.
+tasks.named('test', Test) {
     useJUnitPlatform()
-    minHeapSize = '16g'
-    maxHeapSize = '50g'
     jvmArgs = [
+            '-Xms16g', '-Xmx50g',
             '--add-opens', 'java.base/java.lang=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/java.lang.reflect=ALL-UNNAMED',
@@ -156,19 +175,32 @@ tasks.named('test') {
             '--add-opens', 'java.base/jdk.internal.loader=ALL-UNNAMED',
             '--add-opens', 'java.base/jdk.internal.ref=ALL-UNNAMED',
             '--add-opens', 'java.base/sun.net.www.protocol.http=ALL-UNNAMED',
-            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED'
+            '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
+            '-Dlogback.configurationFile=config/logback.xml'
     ]
-    systemProperty 'logback.configurationFile', 'config/logback.xml'
 }
 
-tasks.withType(JavaCompile) {
-    options.compilerArgs << "-Xlint:none"
-    options.release = 17
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add("-Xlint:none")
+    options.release.set(17)
 }
 
-shadowJar {
-    mainClassName = 'jgraf.app.CityAnalysisApp'
-    manifest {
-        attributes 'Main-Class': 'jgraf.app.CityAnalysisApp'
-    }
-}
+//tasks.named("shadowJar") {
+//    archiveBaseName.set("citymodel-compare")
+//    archiveVersion.set("1.0.0")
+//    destinationDirectory.set(project.rootDir)
+//    setProperty("zip64", true)
+//
+//    manifest {
+//        attributes('Main-Class': 'jgraf.app.CityAnalysisApp')
+//    }
+//
+//    dependencies {
+//        exclude(dependency("org.neo4j:arrow-bom"))
+//    }
+//
+//    // Exclude specific files from the archive
+//    exclude('**/META-INF/*.RSA', '**/META-INF/*.SF', '**/META-INF/*.DSA')
+//
+//    configurations = [project.configurations.runtimeClasspath]
+//}

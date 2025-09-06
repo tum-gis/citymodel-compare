@@ -23,6 +23,24 @@ docker push tumgis/citymodel-compare:1.0.0
 # OR For dev purposes
 docker tag citymodel-compare tumgis/citymodel-compare:1.0.0-dev
 docker push tumgis/citymodel-compare:1.0.0-dev
+
+# MULTI_ARCH BUILD (for Apple M1/M2 and AMD64)
+
+# Enable Docker Buildx (if not already)
+docker buildx create --use
+docker buildx inspect --bootstrap
+
+# Build and push multi-arch image
+docker buildx build \
+    --no-cache \
+    --platform linux/amd64,linux/arm64 \
+    -t tumgis/citymodel-compare:1.0.0-dev \
+    --push \
+    .
+
+# Test local
+docker run --rm --platform linux/amd64 -t -p7474:7474 -p7687:7687 tumgis/citymodel-compare:1.0.0-dev
+# docker run --rm --platform linux/arm64 -t -p7474:7474 -p7687:7687 tumgis/citymodel-compare:1.0.0-dev
 ```
 
 ## Neo4j (Linux)
